@@ -2,8 +2,27 @@
 
 A multi-agent Security Operations Center (SOC) system with real-time threat intelligence dashboard.
 
+## 📸 Screenshots
+
+### Dashboard Overview
+![SOC Agent Dashboard](SocAgentDashBoard.png)
+*Real-time threat monitoring dashboard with statistics, threat type distribution, and severity analysis*
+
+### Threat Feed
+![Threat Feed](ThreatFeed.png)
+*Live threat feed showing recent security incidents with severity levels and processing times*
+
+### Detailed Threat Analysis
+![Threat Details](ThreatDetails.png)
+*Comprehensive threat analysis with false positive scoring, response recommendations, and investigation timeline*
+
+### Investigation Timeline & Raw Data
+![Timeline and Raw Inference](Timeline&RawInference.png)
+*Forensic timeline reconstruction with raw signal metadata and agent inference details*
+
 ## 📑 Table of Contents
 
+- [Screenshots](#-screenshots)
 - [Architecture](#️-architecture)
   - [System Overview](#system-overview)
   - [Request Flow](#request-flow)
