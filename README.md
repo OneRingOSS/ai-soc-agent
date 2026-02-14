@@ -241,9 +241,11 @@ classDiagram
 
 ## 📋 Prerequisites
 
-- Python 3.9+
-- Node.js 18+ and npm
-- Git
+- **Python 3.9 - 3.12** (⚠️ Python 3.13+ not yet supported due to pydantic-core compatibility)
+- **Node.js 18+** and npm
+- **Git**
+
+> **Note**: If you have Python 3.13 installed, use Python 3.9, 3.11, or 3.12 instead. Check your version with `python3 --version`.
 
 ## 🚀 Quick Start
 
@@ -260,13 +262,22 @@ cd ai-soc
 # Navigate to backend directory
 cd soc-agent-system/backend
 
-# Create virtual environment
+# Check your Python version (must be 3.9-3.12)
+python3 --version
+
+# If you have Python 3.13, use a specific version instead:
+# python3.12 -m venv venv  # or python3.11 or python3.9
+
+# Create virtual environment with Python 3.9-3.12
 python3 -m venv venv
 
 # Activate virtual environment
 source venv/bin/activate  # On macOS/Linux
 # OR
 venv\Scripts\activate     # On Windows
+
+# Verify Python version in virtual environment
+python --version  # Should show 3.9.x - 3.12.x
 
 # Install dependencies
 pip install --upgrade pip
@@ -278,6 +289,8 @@ cp .env.example .env
 # Edit .env and add your OpenAI API key (optional - system works in mock mode without it)
 # OPENAI_API_KEY=your-key-here
 ```
+
+> **⚠️ Troubleshooting**: If you get a `pydantic-core` build error, you're likely using Python 3.13+. Delete the `venv` folder and recreate it with Python 3.9-3.12.
 
 ### 3. Frontend Setup
 

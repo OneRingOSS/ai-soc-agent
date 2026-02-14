@@ -83,9 +83,11 @@ The **SOC Agent System** is an intelligent security operations platform that lev
 
 ### Prerequisites
 
-- **Python 3.9+**
+- **Python 3.9 - 3.12** (⚠️ Python 3.13+ not yet supported due to pydantic-core compatibility)
 - **Node.js 18+**
 - **OpenAI API Key** (optional - system works in mock mode without it)
+
+> **Note**: If you have Python 3.13 installed, use Python 3.9, 3.11, or 3.12 instead. Check your version with `python3 --version`.
 
 ### Installation
 
@@ -101,11 +103,21 @@ cd soc-agent-system
 ```bash
 cd backend
 
-# Create virtual environment
-python -m venv venv
+# Check your Python version (must be 3.9-3.12)
+python3 --version
+
+# If you have Python 3.13, use a specific version instead:
+# python3.12 -m venv venv  # or python3.11 or python3.9
+
+# Create virtual environment with Python 3.9-3.12
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 
+# Verify Python version in virtual environment
+python --version  # Should show 3.9.x - 3.12.x
+
 # Install dependencies
+pip install --upgrade pip
 pip install -r requirements.txt
 
 # Configure environment (optional)
@@ -119,6 +131,8 @@ PYTHONPATH=src pytest tests/ -v
 cd src
 PYTHONPATH=. uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+> **⚠️ Troubleshooting**: If you get a `pydantic-core` build error, you're likely using Python 3.13+. Delete the `venv` folder and recreate it with Python 3.9-3.12.
 
 Backend will be available at: **http://localhost:8000**
 
