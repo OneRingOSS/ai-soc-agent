@@ -21,18 +21,19 @@ class Settings(BaseSettings):
     )
     
     # Threat Generation
-    threat_generation_interval: int = Field(default=15, env="THREAT_INTERVAL")
-    max_stored_threats: int = Field(default=50, env="MAX_STORED_THREATS")
-    
+    threat_generation_interval: int = Field(default=30, env="THREAT_GENERATION_INTERVAL")
+    max_stored_threats: int = Field(default=100, env="MAX_STORED_THREATS")
+
     # LLM Configuration
-    llm_model: str = Field(default="gpt-4-turbo-preview", env="LLM_MODEL")
+    llm_model: str = Field(default="gpt-4o-mini", env="LLM_MODEL")
     llm_temperature: float = Field(default=0.7, env="LLM_TEMPERATURE")
     llm_max_tokens: int = Field(default=1000, env="LLM_MAX_TOKENS")
     llm_timeout: int = Field(default=30, env="LLM_TIMEOUT")
-    
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+        extra = "ignore"  # Ignore extra fields in .env file
 
 
 def get_settings() -> Settings:
