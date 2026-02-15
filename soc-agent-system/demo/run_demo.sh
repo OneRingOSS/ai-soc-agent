@@ -9,6 +9,9 @@
 # =============================================================================
 set -e
 
+# Determine script directory for relative paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "=== SOC Agent System — Live Observability Demo ==="
 echo ""
 echo "This demo will:"
@@ -265,8 +268,7 @@ if ! command -v locust &> /dev/null; then
   exit 1
 fi
 
-# Determine the correct paths
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Determine the correct paths (SCRIPT_DIR already set at top of file)
 LOCUSTFILE="$SCRIPT_DIR/../loadtests/locustfile.py"
 REPORT_DIR="$SCRIPT_DIR"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
