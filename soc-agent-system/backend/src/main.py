@@ -14,14 +14,14 @@ from config import settings
 from models import ThreatAnalysis, ThreatSignal, DashboardMetrics, ThreatType
 from threat_generator import threat_generator
 from agents.coordinator import create_coordinator
-from logging_config import demo_mode_minimal
+from logger import setup_json_logging, get_logger
 from telemetry import init_telemetry, instrument_fastapi
 from metrics import create_instrumentator, soc_active_websocket_connections
 
-# Configure logging for demo
-demo_mode_minimal()  # Use demo_mode_detailed() for more verbose output
+# Configure structured JSON logging
+setup_json_logging("INFO")
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # In-memory storage
@@ -112,7 +112,7 @@ async def background_threat_generator():
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"Background generator error: {e}")
+            logger.error("Background generator error", exc_info=True, extra={"error": str(e)})
             await asyncio.sleep(5)
 
 

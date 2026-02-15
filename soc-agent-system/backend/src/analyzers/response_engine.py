@@ -135,6 +135,15 @@ class ResponseActionEngine:
             Complete ResponsePlan with actions
         """
         logger.info(f"⚡ Generating response plan for {severity.value} {signal.threat_type.value}")
+        logger.info(
+            "Response plan generation started",
+            extra={
+                "threat_id": signal.id,
+                "severity": severity.value,
+                "threat_type": signal.threat_type.value,
+                "component": "response_engine"
+            }
+        )
 
         # Check if likely false positive - recommend minimal action
         if fp_score and fp_score.score >= 0.7:
@@ -174,7 +183,7 @@ class ResponseActionEngine:
         # Determine SLA
         sla_minutes = self.SLA_TIMES.get(severity, 60)
 
-        return ResponsePlan(
+        response_plan = ResponsePlan(
             primary_action=primary_action,
             secondary_actions=secondary_actions,
             escalation_path=escalation_path,
@@ -182,6 +191,18 @@ class ResponseActionEngine:
             auto_escalate_after_minutes=sla_minutes // 2,
             notes=self._generate_response_notes(signal, severity, agent_analyses)
         )
+
+        logger.info(
+            "Response plan generated",
+            extra={
+                "threat_id": signal.id,
+                "primary_action": primary_action.action_type.value,
+                "sla_minutes": sla_minutes,
+                "component": "response_engine"
+            }
+        )
+
+        return response_plan
 
     def _generate_fp_response_plan(
         self,

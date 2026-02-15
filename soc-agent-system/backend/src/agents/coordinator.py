@@ -72,6 +72,15 @@ class CoordinatorAgent:
             span.set_attribute("source.ip", signal.metadata.get("source_ip", "unknown"))
 
             logger.info("=" * 80)
+            logger.info(
+                "Threat received",
+                extra={
+                    "threat_id": signal.id,
+                    "customer_name": signal.customer_name,
+                    "threat_type": signal.threat_type.value,
+                    "component": "coordinator"
+                }
+            )
             logger.info(f"🚨 NEW THREAT DETECTED: {signal.threat_type.value}")
             logger.info(f"   Customer: {signal.customer_name}")
             logger.info(f"   Signal ID: {signal.id}")
@@ -232,6 +241,15 @@ class CoordinatorAgent:
                 # Record agent duration in Prometheus
                 record_agent_duration(span_name, elapsed / 1000.0)
 
+                logger.info(
+                    "Agent completed",
+                    extra={
+                        "agent_name": agent_name,
+                        "confidence": result.confidence,
+                        "duration_ms": elapsed,
+                        "component": "coordinator"
+                    }
+                )
                 logger.info(f"   ✅ {agent_name} completed in {elapsed:.0f}ms")
                 logger.info(f"      Confidence: {result.confidence:.2f}")
                 logger.info(f"      Key Findings: {len(result.key_findings)}")

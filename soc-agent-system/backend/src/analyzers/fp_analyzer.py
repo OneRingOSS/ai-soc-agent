@@ -57,6 +57,14 @@ class FalsePositiveAnalyzer:
             FalsePositiveScore with prediction and indicators
         """
         logger.info(f"🔍 Analyzing FP likelihood for {signal.threat_type.value}")
+        logger.info(
+            "FP analysis started",
+            extra={
+                "threat_id": signal.id,
+                "threat_type": signal.threat_type.value,
+                "component": "fp_analyzer"
+            }
+        )
 
         indicators: List[FalsePositiveIndicator] = []
 
@@ -318,7 +326,7 @@ class FalsePositiveAnalyzer:
         fp_count = sum(1 for i in similar_incidents if i.resolved_as == "false_positive")
         tp_count = sum(1 for i in similar_incidents if i.resolved_as == "true_positive")
 
-        return FalsePositiveScore(
+        fp_score_result = FalsePositiveScore(
             score=round(final_score, 3),
             confidence=round(confidence, 3),
             indicators=indicators,
@@ -328,4 +336,16 @@ class FalsePositiveAnalyzer:
             recommendation=recommendation,
             explanation=explanation
         )
+
+        logger.info(
+            "FP analysis completed",
+            extra={
+                "threat_id": signal.id,
+                "fp_score": fp_score_result.score,
+                "recommendation": recommendation,
+                "component": "fp_analyzer"
+            }
+        )
+
+        return fp_score_result
 
