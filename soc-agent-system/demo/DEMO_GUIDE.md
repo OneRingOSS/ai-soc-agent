@@ -49,11 +49,12 @@ cd ../demo
 ### Step 2.5: Optional Real API Test
 - **Interactive prompt**: "Run real API test? (y/N)"
 - **If yes**: Processes 1 threat with real OpenAI API
-- **Expected time**: 8-15 seconds
+- **Expected time**: 8-15 seconds (vs <200ms for mock)
 - **Cost**: ~$0.01
 - **Shows**: Actual LLM integration and response time
-- **Auto-opens**: Jaeger trace for the specific threat ID
+- **Auto-opens**: Jaeger UI
 - **API key**: Auto-loaded from `backend/.env` if available
+- **Finding the trace**: Search by operation `analyze_threat` (most recent trace)
 
 ### Step 3: Load Test (Mock Mode)
 - **Interactive prompt**: "Run mock load test? (y/N)" (if you ran real API test)
@@ -145,9 +146,15 @@ pip install locust
    - **Both**: Press 'y' for real API, then 'y' for load test (shows everything, ~3 min total)
    - **Mock only**: Press 'N' for real API (shows scale and performance, ~2 min)
 
-2. **Jaeger navigation**: After real API test, Jaeger automatically opens with the threat trace
+2. **Jaeger navigation**:
+   - After real API test, Jaeger automatically opens
+   - In the **Operation** dropdown, select `analyze_threat`
+   - Click **Find Traces** to see the most recent trace
+   - Look for the trace with 8-15 second duration (real API) vs <200ms (mock)
 
 3. **Be transparent** - Explain mock vs real performance differences
+   - Mock mode: <200ms response time (for load testing)
+   - Real API: 8-15s response time (actual OpenAI LLM calls)
 
 4. **Show the code** - Be ready to walk through the architecture
 

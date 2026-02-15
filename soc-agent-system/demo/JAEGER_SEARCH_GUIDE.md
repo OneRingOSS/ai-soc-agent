@@ -8,41 +8,50 @@ Quick reference for finding traces in Jaeger UI.
 
 When you run the demo script with a real API test, it automatically:
 1. Extracts the threat ID from the response
-2. Opens Jaeger with a pre-filtered search
-3. Shows only traces for that specific threat
+2. Opens Jaeger UI with the service pre-selected
+3. Provides instructions for finding the specific trace
 
 **Example:**
 ```
 ✅ Real API test completed successfully!
    Threat ID: 22b63eed-2ab0-45e6-aefd-68004949912b
-   Severity: MEDIUM
+   Severity: high
 
-   🔍 Opening Jaeger trace for this threat...
-   📎 Jaeger URL: http://localhost:16686/search?service=soc-agent-system&tags=%7B%22threat.id%22%3A%2222b63eed-2ab0-45e6-aefd-68004949912b%22%7D
+   🔍 Opening Jaeger to view the trace...
+
+   📎 To find this specific trace in Jaeger:
+      1. Click on 'Tags' in the left sidebar
+      2. Add tag: threat.id = 22b63eed-2ab0-45e6-aefd-68004949912b
+      3. Click 'Find Traces'
+
+   Or search by operation: 'analyze_threat'
 ```
 
 ---
 
 ## 🖱️ **Manual Search in Jaeger UI**
 
-If the auto-open doesn't work or you want to search manually:
+### **Method 1: Search by Operation (RECOMMENDED)**
 
-### **Step 1: Open Jaeger**
-```
-http://localhost:16686
-```
+This is the easiest and most reliable method:
 
-### **Step 2: Select Service**
-- In the "Service" dropdown, select: **`soc-agent-system`**
+1. **Open Jaeger**: http://localhost:16686
+2. **Select Service**: `soc-agent-system`
+3. **Select Operation**: `analyze_threat` (from dropdown)
+4. **Click "Find Traces"**
+5. **Look for the most recent trace** with 8-15 second duration (real API) or <200ms (mock)
 
-### **Step 3: Add Tag Filter**
-1. Click the **"Tags"** field
-2. Enter: `threat.id="YOUR_THREAT_ID"`
-   - Example: `threat.id="22b63eed-2ab0-45e6-aefd-68004949912b"`
-3. Press Enter
+### **Method 2: Search by Tag (Advanced)**
 
-### **Step 4: Click "Find Traces"**
-- You should see 1 trace with the operation name: **`analyze_threat`**
+⚠️ **Note**: Tag-based search in Jaeger UI can be unreliable. Use Method 1 if possible.
+
+1. **Open Jaeger**: http://localhost:16686
+2. **Select Service**: `soc-agent-system`
+3. **Click "Tags"** field in the left sidebar
+4. **Enter**: `threat.id` (key) and paste your threat ID (value)
+5. **Click "Find Traces"**
+
+If no results appear, use Method 1 instead.
 
 ---
 
