@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     threat_generation_interval: int = Field(default=30, env="THREAT_GENERATION_INTERVAL")
     max_stored_threats: int = Field(default=100, env="MAX_STORED_THREATS")
 
+    # Redis Configuration
+    redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
+
     # LLM Configuration
     llm_model: str = Field(default="gpt-4o-mini", env="LLM_MODEL")
     llm_temperature: float = Field(default=0.7, env="LLM_TEMPERATURE")
@@ -41,8 +44,8 @@ class Settings(BaseSettings):
     llm_timeout: int = Field(default=30, env="LLM_TIMEOUT")
 
     class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+        # Don't auto-load .env file here - we handle it manually above
+        # to prevent loading during tests (when TESTING=1)
         extra = "ignore"  # Ignore extra fields in .env file
 
 

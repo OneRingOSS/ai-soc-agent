@@ -25,7 +25,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 import sys
 sys.path.insert(0, 'src')
 
-from main import app, threat_store, websocket_clients
+from main import app, websocket_clients
 from models import ThreatSignal, ThreatType, ThreatSeverity, AgentAnalysis
 from threat_generator import ThreatGenerator
 from mock_data import MockDataStore
@@ -108,7 +108,8 @@ def coordinator_mock_mode():
 @pytest.fixture
 def test_client():
     """Create a test client for the FastAPI app."""
-    return TestClient(app)
+    with TestClient(app) as client:
+        yield client
 
 
 @pytest.fixture
@@ -122,12 +123,16 @@ async def async_client():
 
 
 @pytest.fixture(autouse=True)
-def clear_threat_store():
-    """Clear threat store before each test."""
-    threat_store.clear()
+def clear_websocket_clients():
+    """Clear WebSocket clients before and after each test."""
+    from main import websocket_clients
+
+    # Clear before test
     websocket_clients.clear()
+
     yield
-    threat_store.clear()
+
+    # Clear after test
     websocket_clients.clear()
 
 
