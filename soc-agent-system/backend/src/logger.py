@@ -8,11 +8,26 @@ from opentelemetry import trace
 class OTelJsonFormatter(jsonlogger.JsonFormatter):
     """
     JSON formatter that adds OpenTelemetry trace correlation fields.
-    
+
     Automatically injects trace_id and span_id from the current OTel context
     into every log record.
     """
-    
+
+    def formatTime(self, record, datefmt=None):
+        """
+        Override formatTime to use UTC and add 'Z' suffix.
+        This ensures timestamps are unambiguous for Loki/Promtail.
+        """
+        from datetime import datetime
+        # Convert to UTC
+        dt = datetime.utcfromtimestamp(record.created)
+        if datefmt:
+            s = dt.strftime(datefmt)
+        else:
+            s = dt.isoformat()
+        # Add 'Z' suffix to indicate UTC
+        return s + 'Z'
+
     def add_fields(self, log_record, record, message_dict):
         """Add custom fields to the log record."""
         # Call parent to add standard fields

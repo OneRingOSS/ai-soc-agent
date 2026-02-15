@@ -31,7 +31,7 @@ datasources:
 
   # ---------------------------------------------------------------------------
   # Loki — Logs
-  # derivedFields extracts trace_id from log lines and creates a clickable
+  # derivedFields extracts trace_id from detected fields and creates a clickable
   # link to the corresponding Jaeger trace
   # ---------------------------------------------------------------------------
   - name: Loki
@@ -43,12 +43,14 @@ datasources:
     jsonData:
       maxLines: 1000
       derivedFields:
-        # When Grafana sees a trace_id in a log line, it creates a link to Jaeger
+        # Extract trace_id from the trace_id label
+        # This creates a clickable link in Grafana's log viewer
         - datasourceUid: jaeger-uid
-          matcherRegex: '"trace_id":\\s*"([a-f0-9]+)"'
-          name: TraceID
+          matcherType: "label"
+          matcherRegex: "trace_id"
+          name: "TraceID"
           url: "$${__value.raw}"
-          urlDisplayLabel: "View Trace"
+          urlDisplayLabel: "View in Jaeger"
 
   # ---------------------------------------------------------------------------
   # Jaeger — Traces

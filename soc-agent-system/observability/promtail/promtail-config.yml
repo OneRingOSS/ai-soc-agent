@@ -49,13 +49,14 @@ scrape_configs:
 
       # -----------------------------------------------------------------------
       # Stage 2: Use the extracted timestamp as the log entry timestamp
-      # Format matches Python's ISO 8601 output
+      # Format matches Python's ISO 8601 output with UTC 'Z' suffix
       # -----------------------------------------------------------------------
       - timestamp:
           source: timestamp
-          format: "2006-01-02T15:04:05.000000"
+          format: "2006-01-02T15:04:05Z"
           fallback_formats:
-            - "2006-01-02T15:04:05.000"
+            - "2006-01-02T15:04:05.000000Z"
+            - "2006-01-02T15:04:05.000Z"
             - "2006-01-02T15:04:05"
 
       # -----------------------------------------------------------------------

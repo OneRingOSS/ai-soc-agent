@@ -268,6 +268,17 @@
         "sortOrder": "Descending",
         "wrapLogMessage": true
       },
+      "fieldConfig": {
+        "defaults": {
+          "links": [
+            {
+              "title": "View Trace in Jaeger",
+              "url": "http://localhost:16686/trace/${__data.fields.trace_id}",
+              "targetBlank": true
+            }
+          ]
+        }
+      },
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki-uid" },
