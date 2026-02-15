@@ -14,7 +14,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "id": 1,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -40,7 +40,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "rate(soc_threats_processed_total[5m])",
           "legendFormat": "{{severity}} - {{threat_type}}",
           "refId": "A"
@@ -53,7 +53,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "id": 2,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -79,19 +79,19 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "histogram_quantile(0.5, rate(soc_agent_duration_seconds_bucket[5m]))",
           "legendFormat": "p50 - {{agent_name}}",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "histogram_quantile(0.95, rate(soc_agent_duration_seconds_bucket[5m]))",
           "legendFormat": "p95 - {{agent_name}}",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "histogram_quantile(0.99, rate(soc_agent_duration_seconds_bucket[5m]))",
           "legendFormat": "p99 - {{agent_name}}",
           "refId": "C"
@@ -104,7 +104,7 @@
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
       "id": 3,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -130,7 +130,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "soc_active_websocket_connections",
           "legendFormat": "Connections",
           "refId": "A"
@@ -143,7 +143,7 @@
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
       "id": 4,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -169,7 +169,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "soc_threats_requiring_review",
           "legendFormat": "Pending Review",
           "refId": "A"
@@ -182,7 +182,7 @@
       "type": "histogram",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "id": 5,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -204,7 +204,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "soc_fp_score_bucket",
           "legendFormat": "{{le}}",
           "refId": "A",
@@ -218,7 +218,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "id": 6,
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -244,7 +244,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
           "expr": "histogram_quantile(0.95, rate(soc_threat_processing_duration_seconds_bucket[5m]))",
           "legendFormat": "p95 - {{phase}}",
           "refId": "A"
@@ -257,7 +257,7 @@
       "type": "logs",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
       "id": 7,
-      "datasource": { "type": "loki", "uid": "loki" },
+      "datasource": { "type": "loki", "uid": "loki-uid" },
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -270,7 +270,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki" },
+          "datasource": { "type": "loki", "uid": "loki-uid" },
           "expr": "{job=\"soc-agent\"}",
           "refId": "A"
         }
