@@ -52,13 +52,17 @@ cd ../demo
 - **Expected time**: 8-15 seconds
 - **Cost**: ~$0.01
 - **Shows**: Actual LLM integration and response time
+- **Auto-opens**: Jaeger trace for the specific threat ID
+- **API key**: Auto-loaded from `backend/.env` if available
 
 ### Step 3: Load Test (Mock Mode)
+- **Interactive prompt**: "Run mock load test? (y/N)" (if you ran real API test)
 - **Users**: 20 concurrent
 - **Spawn rate**: 5 users/sec
 - **Duration**: 2 minutes
 - **Mode**: Mock responses (fast, free)
 - **Expected**: ~117ms avg response time, 0% failures
+- **Optional**: Can skip if you only want to show real API integration
 
 ### Step 4: Report
 - **HTML Report**: `demo/loadtest-report.html`
@@ -136,10 +140,17 @@ pip install locust
 
 ## 🎯 Interview Tips
 
-1. **Start with mock mode** - Shows system architecture and observability
-2. **Offer real API demo** - If interviewer wants to see actual LLM output
+1. **Choose your demo flow**:
+   - **Real API only**: Press 'y' for real API, then 'N' for load test (shows actual LLM, faster demo)
+   - **Both**: Press 'y' for real API, then 'y' for load test (shows everything, ~3 min total)
+   - **Mock only**: Press 'N' for real API (shows scale and performance, ~2 min)
+
+2. **Jaeger navigation**: After real API test, Jaeger automatically opens with the threat trace
+
 3. **Be transparent** - Explain mock vs real performance differences
+
 4. **Show the code** - Be ready to walk through the architecture
+
 5. **Highlight observability** - Metrics, traces, logs all working together
 
 ---
