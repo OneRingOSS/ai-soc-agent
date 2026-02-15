@@ -15,6 +15,7 @@ from models import ThreatAnalysis, ThreatSignal, DashboardMetrics, ThreatType
 from threat_generator import threat_generator
 from agents.coordinator import create_coordinator
 from logging_config import demo_mode_minimal
+from telemetry import init_telemetry, instrument_fastapi
 
 # Configure logging for demo
 demo_mode_minimal()  # Use demo_mode_detailed() for more verbose output
@@ -40,6 +41,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"   Mode: {'MOCK (no OpenAI API)' if not settings.openai_api_key else 'LIVE (OpenAI API enabled)'}")
     logger.info(f"   Host: {settings.host}:{settings.port}")
     logger.info(f"   CORS Origins: {settings.cors_origins}")
+
+    # Initialize OpenTelemetry
+    logger.info("   Initializing OpenTelemetry...")
+    init_telemetry()
 
     # Startup: Start background threat generation
     logger.info("   Starting background threat generator...")
@@ -74,6 +79,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Instrument FastAPI with OpenTelemetry
+instrument_fastapi(app)
 
 
 async def background_threat_generator():

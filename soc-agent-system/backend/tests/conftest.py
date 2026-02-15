@@ -1,4 +1,11 @@
 """Pytest fixtures for SOC Agent System tests."""
+import os
+
+# Set testing environment variables BEFORE any other imports
+# This ensures the app initializes in testing mode
+os.environ["TESTING"] = "true"
+os.environ["LOG_LEVEL"] = "DEBUG"
+
 import pytest
 import asyncio
 from typing import Generator, AsyncGenerator
@@ -7,6 +14,12 @@ from datetime import datetime
 
 from httpx import AsyncClient, ASGITransport
 from fastapi.testclient import TestClient
+
+# OpenTelemetry test imports
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 # Import from src
 import sys
@@ -116,4 +129,49 @@ def clear_threat_store():
     yield
     threat_store.clear()
     websocket_clients.clear()
+
+
+# ============================================================================
+# BLOCK 1A: OpenTelemetry Test Fixtures
+# ============================================================================
+
+@pytest.fixture
+def mock_otel_exporter():
+    """Create an in-memory OpenTelemetry exporter for testing."""
+    # Create in-memory exporter
+    exporter = InMemorySpanExporter()
+
+    # Get the existing global tracer provider (created by the app)
+    provider = trace.get_tracer_provider()
+
+    # Add our in-memory exporter as a span processor to the existing provider
+    processor = SimpleSpanProcessor(exporter)
+    provider.add_span_processor(processor)
+
+    yield exporter
+
+    # Cleanup: clear the exporter's spans
+    exporter.clear()
+
+
+@pytest.fixture
+def sample_threat_signal_dict():
+    """Return a valid TriggerRequest dict for testing."""
+    return {
+        "threat_type": "bot_traffic"
+    }
+
+
+@pytest.fixture
+def sample_threat_signals_batch():
+    """Return a list of 5 different TriggerRequest dicts."""
+    threat_types = ["bot_traffic", "proxy_network", "device_compromise", "anomaly_detection", "rate_limit_breach"]
+
+    signals = []
+    for threat_type in threat_types:
+        signals.append({
+            "threat_type": threat_type
+        })
+
+    return signals
 
