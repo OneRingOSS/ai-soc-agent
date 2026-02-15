@@ -6,11 +6,13 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 from dotenv import load_dotenv
 
-# Load .env file from backend directory
-backend_dir = Path(__file__).parent.parent
-env_file = backend_dir / ".env"
-if env_file.exists():
-    load_dotenv(env_file)
+# Load .env file from backend directory (but NOT during testing)
+# This prevents tests from accidentally using real OpenAI API
+if not os.getenv("TESTING"):
+    backend_dir = Path(__file__).parent.parent
+    env_file = backend_dir / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
 
 
 class Settings(BaseSettings):
