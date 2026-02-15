@@ -93,7 +93,10 @@ echo ""
 read -p "Run real API test? (y/N): " -n 1 -r
 echo ""
 
+RAN_REAL_API_TEST=false
+
 if [[ $REPLY =~ ^[Yy]$ ]]; then
+  RAN_REAL_API_TEST=true
   # Try to load API key from backend/.env if not already set
   if [ -z "$OPENAI_API_KEY" ]; then
     BACKEND_ENV="$SCRIPT_DIR/../backend/.env"
@@ -151,11 +154,16 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         if [ -n "$THREAT_ID" ]; then
           echo "   Threat ID: $THREAT_ID"
           echo "   Severity: $SEVERITY"
+          echo ""
+          echo "   🔍 Opening Jaeger trace for this threat..."
+          # Open Jaeger with search for this specific threat ID
+          open "http://localhost:16686/search?service=soc-agent-system&tags=%7B%22threat.id%22%3A%22${THREAT_ID}%22%7D" 2>/dev/null || true
+          sleep 1
         fi
       fi
 
       echo ""
-      echo "   Check Jaeger for the distributed trace showing real OpenAI API calls!"
+      echo "   ✅ Check Jaeger for the distributed trace showing real OpenAI API calls!"
       echo "   → http://localhost:16686/search?service=soc-agent-system"
     else
       echo "❌ Real API test failed!"
@@ -192,6 +200,40 @@ fi
 # ─────────────────────────────────────────────────
 # Step 3: Run Load Test (2 minutes) - MOCK MODE
 # ─────────────────────────────────────────────────
+
+# Ask if user wants to run load test (skip if they ran real API test)
+if [ "$RAN_REAL_API_TEST" = true ]; then
+  echo "─────────────────────────────────────────────"
+  echo "Step 3: Load Test with Mock Responses"
+  echo "─────────────────────────────────────────────"
+  echo ""
+  echo "You just ran a real API test. Would you like to also run the mock load test?"
+  echo "This will generate 1,800+ requests over 2 minutes for performance testing."
+  echo ""
+  read -p "Run mock load test? (y/N): " -n 1 -r
+  echo ""
+  echo ""
+
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "⏭️  Skipping load test"
+    echo ""
+    echo "=============================================="
+    echo " Demo Complete!"
+    echo "=============================================="
+    echo ""
+    echo "📋 What you demonstrated:"
+    echo "  ✅ Real OpenAI API integration (8-15s response time)"
+    echo "  ✅ Distributed tracing in Jaeger"
+    echo "  ✅ Full observability stack"
+    echo ""
+    echo "💡 Tip: You can still explore the dashboards:"
+    echo "  → Grafana: http://localhost:3000"
+    echo "  → Jaeger:  http://localhost:16686"
+    echo ""
+    exit 0
+  fi
+fi
+
 echo "─────────────────────────────────────────────"
 echo "Step 3: Load Test with Mock Responses"
 echo "─────────────────────────────────────────────"
