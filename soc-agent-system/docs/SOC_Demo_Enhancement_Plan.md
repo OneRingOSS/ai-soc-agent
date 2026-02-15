@@ -1169,15 +1169,183 @@ FILES TO GENERATE:
    - How to run headless for CI: locust --headless -u 20 -r 5 -t 2m
    - Description of each user class and what it simulates
 
+6. loadtests/verify_loadtest.sh (executable):
+   Automated verification script that runs BEFORE handoff to user:
+
+   Step 1: Environment Check
+   - Verify backend is running: curl -f http://localhost:8000/health
+   - Verify observability stack is up: curl -f http://localhost:9090/-/healthy (Prometheus)
+   - Verify Grafana is accessible: curl -f http://localhost:3000/api/health
+   - Exit with error if any service is down
+
+   Step 2: API Integration Test
+   - Send a single test threat via curl to /api/threats/trigger
+   - Verify response is 200 OK
+   - Verify response contains expected fields (threat_id, analysis, etc.)
+   - Print the response JSON for inspection
+
+   Step 3: Threat Type Validation
+   - For each of the 7 threat types, send one test request
+   - Verify all return 200 OK (no 400/422 validation errors)
+   - Print summary: "✓ All 7 threat types validated"
+
+   Step 4: Locust Dry Run
+   - Run: locust -f locustfile.py --host=http://localhost:8000 --headless -u 5 -r 1 -t 30s
+   - Capture output and check for:
+     * 0% failure rate (all requests succeeded)
+     * Average response time < 2000ms
+     * No Python exceptions in output
+   - Print summary: "✓ Locust dry run: X requests, Y% success, Zms avg response"
+
+   Step 5: Observability Verification
+   - Query Prometheus: curl 'http://localhost:9090/api/v1/query?query=soc_threats_processed_total'
+   - Verify metric value increased after test
+   - Query Jaeger: curl 'http://localhost:16686/api/traces?service=soc-agent-system&limit=1'
+   - Verify at least 1 trace exists
+   - Print summary: "✓ Metrics and traces are being collected"
+
+   Step 6: Final Report
+   - Print green checkmarks for all passed steps
+   - Print red X for any failures with remediation hints
+   - Exit code 0 if all passed, 1 if any failed
+
+   Example output:
+   ```
+   ========================================
+   LOCUST LOAD TEST VERIFICATION
+   ========================================
+
+   [1/6] Environment Check...
+   ✓ Backend health: OK (uptime: 123s)
+   ✓ Prometheus: OK
+   ✓ Grafana: OK
+
+   [2/6] API Integration Test...
+   ✓ POST /api/threats/trigger: 200 OK
+   ✓ Response contains: threat_id, analysis, fp_score
+
+   [3/6] Threat Type Validation...
+   ✓ bot_traffic: 200 OK
+   ✓ credential_stuffing: 200 OK
+   ✓ account_takeover: 200 OK
+   ✓ data_scraping: 200 OK
+   ✓ geo_anomaly: 200 OK
+   ✓ rate_limit_breach: 200 OK
+   ✓ brute_force: 200 OK
+
+   [4/6] Locust Dry Run (5 users, 30s)...
+   ✓ Requests: 47 total, 0 failed (100% success)
+   ✓ Avg response time: 856ms
+   ✓ No exceptions detected
+
+   [5/6] Observability Verification...
+   ✓ Prometheus metric soc_threats_processed_total: 54 (increased)
+   ✓ Jaeger traces found: 47 traces
+
+   [6/6] Final Report...
+   ========================================
+   ✅ ALL CHECKS PASSED
+   ========================================
+
+   Load testing suite is ready for demo!
+
+   Next steps:
+   1. Run full load test: locust -f loadtests/locustfile.py --host=http://localhost:8000
+   2. Open Locust UI: http://localhost:8089
+   3. Start with 20 users, spawn rate 5
+   4. Watch Grafana dashboards update in real-time
+   ```
+
+7. demo/run_demo.sh (executable):
+   Interactive demo orchestration script:
+
+   ```bash
+   #!/bin/bash
+   set -e
+
+   echo "=== SOC Agent System — Live Observability Demo ==="
+   echo ""
+   echo "This demo will:"
+   echo "  1. Verify all services are running"
+   echo "  2. Open dashboards in your browser"
+   echo "  3. Run a 2-minute load test"
+   echo "  4. Show real-time observability data"
+   echo ""
+   read -p "Press Enter to start..."
+
+   echo ""
+   echo "[Step 1/4] Verifying stack health..."
+   curl -sf http://localhost:8000/health | jq -r '"✓ Backend: \(.status) (uptime: \(.uptime_seconds)s)"'
+   curl -sf http://localhost:9090/-/healthy && echo "✓ Prometheus: healthy"
+   curl -sf http://localhost:3000/api/health | jq -r '"✓ Grafana: \(.database)"'
+
+   echo ""
+   echo "[Step 2/4] Opening dashboards..."
+   echo "  → Grafana (metrics): http://localhost:3000"
+   echo "  → Jaeger (traces): http://localhost:16686"
+   echo "  → SOC Dashboard: http://localhost:5173"
+   sleep 2
+   open http://localhost:3000/d/soc-dashboard/soc-agent-system || true
+   open http://localhost:16686 || true
+   open http://localhost:5173 || true
+
+   echo ""
+   echo "[Step 3/4] Starting load test..."
+   echo "  → Locust UI: http://localhost:8089"
+   echo "  → Users: 20, Spawn rate: 5/sec, Duration: 2 minutes"
+   echo ""
+   echo "💡 DEMO TIP: Switch between Grafana tabs to show:"
+   echo "   - Threat processing rate climbing"
+   echo "   - Per-agent latency distribution"
+   echo "   - FP score heatmap"
+   echo "   - Recent logs with clickable trace IDs"
+   echo ""
+
+   locust -f loadtests/locustfile.py --host=http://localhost:8000 \
+          --headless --users 20 --spawn-rate 5 --run-time 2m \
+          --html=loadtest-report.html &
+
+   LOCUST_PID=$!
+
+   echo ""
+   echo "[Step 4/4] Load test running... (watch the dashboards!)"
+   echo ""
+   echo "🎤 NARRATION SCRIPT:"
+   echo "   'Notice how the threat processing rate is climbing...'"
+   echo "   'Each spike in Jaeger represents a distributed trace across 5 agents...'"
+   echo "   'The P99 latency stays under 1 second even at 20 concurrent users...'"
+   echo "   'Click any trace_id in the logs to jump directly to Jaeger...'"
+   echo "   'This is exactly how I'd monitor Endor Labs platform in production.'"
+   echo ""
+
+   wait $LOCUST_PID
+
+   echo ""
+   echo "✅ Demo complete! Load test report: loadtest-report.html"
+   echo ""
+   echo "To run again: ./demo/run_demo.sh"
+   ```
+
 CONSTRAINTS:
 - All threat signals must pass Pydantic validation (match the ThreatSignal model exactly)
 - Customer IDs must be unique per customer name
 - Timestamps should use current time (not hardcoded)
 - Load test should not crash the backend at 20 concurrent users
 - Locust file should work both standalone and in Docker
+- verify_loadtest.sh must exit with code 0 only if ALL checks pass
+- verify_loadtest.sh should be run automatically by Intent before marking the task complete
+
+VERIFICATION CHECKLIST (Intent should run this before handoff):
+- [ ] Run verify_loadtest.sh and confirm all 6 steps pass
+- [ ] Check that all 7 threat types return 200 OK (not 422 validation errors)
+- [ ] Verify Locust dry run shows 0% failure rate
+- [ ] Confirm Prometheus metrics are incrementing
+- [ ] Confirm Jaeger traces are being created
+- [ ] Test demo/run_demo.sh opens all 3 browser tabs
+- [ ] Verify loadtest-report.html is generated after demo run
 ```
 
 ---
 
-*Last updated: February 14, 2026*
+*Last updated: February 15, 2026*
 *Prepared for Endor Labs Director of Engineering Interview Loop*
