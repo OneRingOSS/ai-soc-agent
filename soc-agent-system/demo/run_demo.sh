@@ -103,8 +103,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     if [ -f "$BACKEND_ENV" ]; then
       echo ""
       echo "📄 Loading OPENAI_API_KEY from backend/.env..."
-      # Source the .env file to get the API key
-      export $(grep -v '^#' "$BACKEND_ENV" | grep OPENAI_API_KEY | xargs)
+      # Extract the API key value from .env file
+      OPENAI_API_KEY=$(grep "^OPENAI_API_KEY=" "$BACKEND_ENV" | cut -d'=' -f2- | tr -d ' ')
+      export OPENAI_API_KEY
+
+      if [ -n "$OPENAI_API_KEY" ]; then
+        echo "   ✅ API key loaded successfully"
+      fi
     fi
   fi
 
@@ -157,7 +162,10 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
           echo ""
           echo "   🔍 Opening Jaeger trace for this threat..."
           # Open Jaeger with search for this specific threat ID
-          open "http://localhost:16686/search?service=soc-agent-system&tags=%7B%22threat.id%22%3A%22${THREAT_ID}%22%7D" 2>/dev/null || true
+          # URL encode the tags parameter: {"threat.id":"THREAT_ID"}
+          JAEGER_URL="http://localhost:16686/search?service=soc-agent-system&tags=%7B%22threat.id%22%3A%22${THREAT_ID}%22%7D"
+          open "$JAEGER_URL" 2>/dev/null || true
+          echo "   📎 Jaeger URL: $JAEGER_URL"
           sleep 1
         fi
       fi

@@ -67,6 +67,7 @@ class CoordinatorAgent:
         # Create parent span for the entire threat analysis
         with tracer.start_as_current_span("analyze_threat") as span:
             # Set initial span attributes
+            span.set_attribute("threat.id", signal.id)
             span.set_attribute("threat.type", signal.threat_type.value)
             span.set_attribute("customer.name", signal.customer_name)
             span.set_attribute("source.ip", signal.metadata.get("source_ip", "unknown"))
