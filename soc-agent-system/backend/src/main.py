@@ -16,6 +16,7 @@ from threat_generator import threat_generator
 from agents.coordinator import create_coordinator
 from logging_config import demo_mode_minimal
 from telemetry import init_telemetry, instrument_fastapi
+from metrics import create_instrumentator, soc_active_websocket_connections
 
 # Configure logging for demo
 demo_mode_minimal()  # Use demo_mode_detailed() for more verbose output
@@ -82,6 +83,10 @@ app.add_middleware(
 
 # Instrument FastAPI with OpenTelemetry
 instrument_fastapi(app)
+
+# Initialize Prometheus metrics
+instrumentator = create_instrumentator()
+instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schema=True)
 
 
 async def background_threat_generator():
@@ -236,6 +241,9 @@ async def websocket_endpoint(websocket: WebSocket):
     await websocket.accept()
     websocket_clients.append(websocket)
 
+    # Update Prometheus metric for active connections
+    soc_active_websocket_connections.set(len(websocket_clients))
+
     try:
         # Send initial batch
         await websocket.send_json({
@@ -262,6 +270,9 @@ async def websocket_endpoint(websocket: WebSocket):
         if websocket in websocket_clients:
             websocket_clients.remove(websocket)
 
+        # Update Prometheus metric for active connections
+        soc_active_websocket_connections.set(len(websocket_clients))
+
 
 if __name__ == "__main__":
     import uvicorn
@@ -269,6 +280,6 @@ if __name__ == "__main__":
         "main:app",
         host=settings.host,
         port=settings.port,
-        reload=settings.debug
+        reload=False
     )
 

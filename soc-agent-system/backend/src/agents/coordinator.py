@@ -20,6 +20,12 @@ from analyzers.fp_analyzer import FalsePositiveAnalyzer
 from analyzers.response_engine import ResponseActionEngine
 from analyzers.timeline_builder import TimelineBuilder
 from telemetry import get_tracer
+from metrics import (
+    record_threat_processed,
+    record_agent_duration,
+    record_fp_score,
+    record_processing_phase
+)
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -187,6 +193,11 @@ class CoordinatorAgent:
             span.set_attribute("fp.score", fp_score.score)
             span.set_attribute("requires_review", final_analysis.requires_human_review)
 
+            # Record Prometheus metrics
+            record_threat_processed(severity.value, signal.threat_type.value)
+            record_fp_score(fp_score.score)
+            record_processing_phase("total", total_time / 1000.0)
+
             logger.info(f"\n✅ ANALYSIS COMPLETE")
             logger.info(f"   Severity: {final_analysis.severity.value}")
             logger.info(f"   Total Processing Time: {total_time}ms")
@@ -217,6 +228,9 @@ class CoordinatorAgent:
 
                 span.set_attribute("agent.confidence", result.confidence)
                 span.set_attribute("agent.duration_ms", elapsed)
+
+                # Record agent duration in Prometheus
+                record_agent_duration(span_name, elapsed / 1000.0)
 
                 logger.info(f"   ✅ {agent_name} completed in {elapsed:.0f}ms")
                 logger.info(f"      Confidence: {result.confidence:.2f}")
