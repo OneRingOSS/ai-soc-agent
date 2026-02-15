@@ -79,10 +79,90 @@ echo ""
 sleep 2
 
 # ─────────────────────────────────────────────────
-# Step 3: Run Load Test (2 minutes)
+# Step 2.5: Optional Real OpenAI API Test
 # ─────────────────────────────────────────────────
-echo "Step 3: Running load test — 20 users, spawn rate 5, duration 2m"
-echo "  Watch the dashboards update in real-time!"
+echo "─────────────────────────────────────────────"
+echo "Optional: Test with Real OpenAI API"
+echo "─────────────────────────────────────────────"
+echo ""
+echo "Would you like to process 1 threat with the REAL OpenAI API?"
+echo "This will take 8-15 seconds and demonstrate actual LLM integration."
+echo ""
+echo "⚠️  Note: This requires OPENAI_API_KEY to be set and will cost ~$0.01"
+echo ""
+read -p "Run real API test? (y/N): " -n 1 -r
+echo ""
+
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  if [ -z "$OPENAI_API_KEY" ]; then
+    echo ""
+    echo "❌ OPENAI_API_KEY is not set!"
+    echo ""
+    read -p "Enter your OpenAI API key (or press Enter to skip): " API_KEY
+    if [ -n "$API_KEY" ]; then
+      export OPENAI_API_KEY="$API_KEY"
+    else
+      echo "⏭️  Skipping real API test"
+      echo ""
+    fi
+  fi
+
+  if [ -n "$OPENAI_API_KEY" ]; then
+    echo ""
+    echo "🔴 LIVE API TEST — Processing 1 threat with real OpenAI API..."
+    echo "   (This will take 8-15 seconds)"
+    echo ""
+
+    START_TIME=$(date +%s)
+
+    RESPONSE=$(curl -s -X POST http://localhost:8000/api/threats/trigger \
+      -H "Content-Type: application/json" \
+      -d '{"threat_type": "bot_traffic"}' \
+      -w "\n%{http_code}\n%{time_total}")
+
+    HTTP_CODE=$(echo "$RESPONSE" | tail -2 | head -1)
+    TIME_TOTAL=$(echo "$RESPONSE" | tail -1)
+    BODY=$(echo "$RESPONSE" | head -n -2)
+
+    END_TIME=$(date +%s)
+    DURATION=$((END_TIME - START_TIME))
+
+    echo ""
+    if [ "$HTTP_CODE" = "200" ]; then
+      echo "✅ Real API test completed successfully!"
+      echo "   HTTP Status: $HTTP_CODE"
+      echo "   Response Time: ${TIME_TOTAL}s (${DURATION}s wall time)"
+      echo ""
+      echo "   Check Jaeger for the distributed trace showing real OpenAI API calls!"
+      echo "   → http://localhost:16686/search?service=soc-agent-system"
+    else
+      echo "❌ Real API test failed!"
+      echo "   HTTP Status: $HTTP_CODE"
+      echo "   Response Time: ${TIME_TOTAL}s"
+      echo ""
+      echo "   This is likely due to:"
+      echo "   - Invalid API key"
+      echo "   - OpenAI rate limits"
+      echo "   - Network issues"
+    fi
+    echo ""
+    sleep 2
+  fi
+else
+  echo "⏭️  Skipping real API test"
+  echo ""
+fi
+
+# ─────────────────────────────────────────────────
+# Step 3: Run Load Test (2 minutes) - MOCK MODE
+# ─────────────────────────────────────────────────
+echo "─────────────────────────────────────────────"
+echo "Step 3: Load Test with Mock Responses"
+echo "─────────────────────────────────────────────"
+echo ""
+echo "Running load test — 20 users, spawn rate 5, duration 2m"
+echo "  ⚡ Using MOCK mode for speed and cost efficiency"
+echo "  📊 Watch the dashboards update in real-time!"
 echo ""
 
 if ! command -v locust &> /dev/null; then
@@ -139,6 +219,12 @@ echo " generating all 6 threat types: bot traffic, proxy networks,"
 echo " device compromises, anomaly detections, rate limit breaches,"
 echo " and geo anomalies."
 echo ""
+echo " ⚡ IMPORTANT: This demo uses mock responses for speed and cost"
+echo " efficiency. In production with real OpenAI API calls, we'd expect"
+echo " 8-15 second response times per threat due to LLM processing."
+echo " The architecture supports this through async processing and proper"
+echo " timeout handling."
+echo ""
 echo " In Grafana, you can see the threat processing rate, agent"
 echo " execution latency, and false positive score distribution —"
 echo " all updating in real-time from Prometheus metrics."
@@ -148,7 +234,10 @@ echo " showing the full pipeline: ingestion → 5 parallel agents →"
 echo " FP analysis → response planning → timeline generation."
 echo ""
 echo " The SOC Dashboard shows the live threat feed with severity"
-echo " classification, MITRE ATT&CK mapping, and response plans.\""
+echo " classification, MITRE ATT&CK mapping, and response plans."
+echo ""
+echo " The system is fully integrated with OpenAI's API — I can demonstrate"
+echo " a real example if you'd like to see actual LLM-generated analysis.\""
 echo ""
 echo "=============================================="
 
