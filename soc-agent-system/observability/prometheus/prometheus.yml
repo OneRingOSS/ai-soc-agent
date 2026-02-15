@@ -1,0 +1,35 @@
+# =============================================================================
+# Prometheus Configuration — SOC Agent System
+# =============================================================================
+# Scrapes the FastAPI backend metrics endpoint at host.docker.internal:8000/metrics
+# Interval: 15s | Retention: 15d (set via docker-compose command flags)
+#
+# Expected metrics:
+#   soc_threats_processed_total          (Counter)
+#   soc_agent_duration_seconds           (Histogram)
+#   soc_fp_score                         (Histogram)
+#   soc_threat_processing_duration_seconds (Histogram)
+#   soc_active_websocket_connections     (Gauge)
+#   soc_threats_requiring_review         (Gauge)
+# =============================================================================
+
+global:
+  scrape_interval: 15s       # How often to scrape targets
+  evaluation_interval: 15s   # How often to evaluate recording/alerting rules
+  scrape_timeout: 10s        # Per-scrape timeout
+
+scrape_configs:
+  # SOC Agent backend — exposes Prometheus metrics via prometheus_client
+  - job_name: "soc-agent-backend"
+    metrics_path: "/metrics"
+    static_configs:
+      - targets: ["host.docker.internal:8000"]
+        labels:
+          service: "soc-agent-system"
+          environment: "development"
+
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+

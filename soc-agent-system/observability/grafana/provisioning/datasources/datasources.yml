@@ -1,0 +1,87 @@
+# =============================================================================
+# Grafana Datasource Provisioning — SOC Agent System
+# =============================================================================
+# Auto-provisions three datasources on Grafana startup:
+#   1. Prometheus — metrics (default datasource)
+#   2. Loki — logs (with derived field for trace-to-logs correlation)
+#   3. Jaeger — traces
+#
+# Trace-to-logs correlation:
+#   - Loki has a derivedFields config that links trace_id values to Jaeger
+#   - Jaeger tracesToLogs config links traces back to Loki log queries
+#   This enables seamless navigation between traces and logs in Grafana.
+# =============================================================================
+
+apiVersion: 1
+
+datasources:
+  # ---------------------------------------------------------------------------
+  # Prometheus — Metrics
+  # ---------------------------------------------------------------------------
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus-uid
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "15s"   # Matches Prometheus scrape interval
+      httpMethod: POST
+
+  # ---------------------------------------------------------------------------
+  # Loki — Logs
+  # derivedFields extracts trace_id from log lines and creates a clickable
+  # link to the corresponding Jaeger trace
+  # ---------------------------------------------------------------------------
+  - name: Loki
+    type: loki
+    uid: loki-uid
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      maxLines: 1000
+      derivedFields:
+        # When Grafana sees a trace_id in a log line, it creates a link to Jaeger
+        - datasourceUid: jaeger-uid
+          matcherRegex: '"trace_id":\\s*"([a-f0-9]+)"'
+          name: TraceID
+          url: "$${__value.raw}"
+          urlDisplayLabel: "View Trace"
+
+  # ---------------------------------------------------------------------------
+  # Jaeger — Traces
+  # tracesToLogsV2 enables clicking from a trace span to matching Loki logs
+  # filtered by trace_id, providing full request context
+  # ---------------------------------------------------------------------------
+  - name: Jaeger
+    type: jaeger
+    uid: jaeger-uid
+    access: proxy
+    url: http://jaeger:16686
+    editable: false
+    jsonData:
+      tracesToLogsV2:
+        datasourceUid: loki-uid
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        filterByTraceID: true
+        filterBySpanID: false
+        customQuery: false
+        tags:
+          - key: "service.name"
+            value: "service"
+      tracesToMetrics:
+        datasourceUid: prometheus-uid
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        tags:
+          - key: "service.name"
+            value: "service"
+        queries:
+          - name: "Request Duration"
+            query: "soc_threat_processing_duration_seconds_bucket{$$__tags}"
+          - name: "Threats Processed"
+            query: "soc_threats_processed_total{$$__tags}"
+

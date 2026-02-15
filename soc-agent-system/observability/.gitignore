@@ -1,0 +1,17 @@
+# =============================================================================
+# Observability stack — Git ignores
+# =============================================================================
+
+# Log files (only keep .gitkeep)
+logs/*.log
+logs/**/*.log
+
+# Persistent data volumes (created by Docker)
+*/data/
+prometheus_data/
+loki_data/
+grafana_data/
+
+# Environment overrides
+.env
+
