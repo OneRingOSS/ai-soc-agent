@@ -103,13 +103,17 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     if [ -f "$BACKEND_ENV" ]; then
       echo ""
       echo "📄 Loading OPENAI_API_KEY from backend/.env..."
-      # Extract the API key value from .env file
-      OPENAI_API_KEY=$(grep "^OPENAI_API_KEY=" "$BACKEND_ENV" | cut -d'=' -f2- | tr -d ' ')
+      # Extract the API key value from .env file (remove quotes and whitespace)
+      OPENAI_API_KEY=$(grep "^OPENAI_API_KEY=" "$BACKEND_ENV" | cut -d'=' -f2- | tr -d ' "' | tr -d "'")
       export OPENAI_API_KEY
 
       if [ -n "$OPENAI_API_KEY" ]; then
-        echo "   ✅ API key loaded successfully"
+        echo "   ✅ API key loaded successfully (${#OPENAI_API_KEY} characters)"
+      else
+        echo "   ⚠️  API key found but appears empty"
       fi
+    else
+      echo "   ⚠️  File not found: $BACKEND_ENV"
     fi
   fi
 
@@ -160,13 +164,18 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
           echo "   Threat ID: $THREAT_ID"
           echo "   Severity: $SEVERITY"
           echo ""
-          echo "   🔍 Opening Jaeger trace for this threat..."
-          # Open Jaeger with search for this specific threat ID
-          # URL encode the tags parameter: {"threat.id":"THREAT_ID"}
-          JAEGER_URL="http://localhost:16686/search?service=soc-agent-system&tags=%7B%22threat.id%22%3A%22${THREAT_ID}%22%7D"
+          echo "   🔍 Opening Jaeger to view the trace..."
+          # Open Jaeger with the service pre-selected
+          JAEGER_URL="http://localhost:16686/search?service=soc-agent-system"
           open "$JAEGER_URL" 2>/dev/null || true
-          echo "   📎 Jaeger URL: $JAEGER_URL"
-          sleep 1
+          echo ""
+          echo "   📎 To find this specific trace in Jaeger:"
+          echo "      1. Click on 'Tags' in the left sidebar"
+          echo "      2. Add tag: threat.id = $THREAT_ID"
+          echo "      3. Click 'Find Traces'"
+          echo ""
+          echo "   Or search by operation: 'analyze_threat'"
+          sleep 2
         fi
       fi
 
