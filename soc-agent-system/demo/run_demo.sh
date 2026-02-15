@@ -90,10 +90,13 @@ if ! command -v locust &> /dev/null; then
   exit 1
 fi
 
-REPORT_DIR="soc-agent-system/demo"
+# Determine the correct paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+LOCUSTFILE="$SCRIPT_DIR/../loadtests/locustfile.py"
+REPORT_DIR="$SCRIPT_DIR"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-locust -f soc-agent-system/loadtests/locustfile.py \
+locust -f "$LOCUSTFILE" \
   --host=http://localhost:8000 \
   --headless \
   -u 20 -r 5 -t 2m \
