@@ -106,7 +106,11 @@ echo "Step 4/6: Locust Dry Run (5 users, 30s)"
 if ! command -v locust &> /dev/null; then
   fail "Locust is not installed (pip install locust)"
 else
-  LOCUST_OUTPUT=$(locust -f soc-agent-system/loadtests/locustfile.py \
+  # Determine the correct path to locustfile.py
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  LOCUSTFILE="$SCRIPT_DIR/locustfile.py"
+
+  LOCUST_OUTPUT=$(locust -f "$LOCUSTFILE" \
     --host=http://localhost:8000 \
     --headless -u 5 -r 1 -t 30s \
     --csv=loadtest-results 2>&1) || true
