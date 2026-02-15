@@ -15,49 +15,126 @@ The **SOC Agent System** is an intelligent security operations platform that lev
 
 ### Key Features
 
-✅ **Multi-Agent Architecture** - 5 specialized agents working in parallel for comprehensive threat analysis  
-✅ **False Positive Detection** - ML-based scoring system to reduce alert fatigue  
-✅ **Automated Response Planning** - Context-aware action recommendations with SLA tracking  
-✅ **Investigation Timeline** - Chronological event reconstruction for forensic analysis  
-✅ **Real-time Dashboard** - WebSocket-powered live threat monitoring  
-✅ **MITRE ATT&CK Mapping** - Automatic threat classification and technique identification  
-✅ **Production-Ready** - Comprehensive test coverage (43 tests), logging, and error handling  
+✅ **Multi-Agent Architecture** - 5 specialized agents working in parallel for comprehensive threat analysis
+✅ **False Positive Detection** - ML-based scoring system to reduce alert fatigue
+✅ **Automated Response Planning** - Context-aware action recommendations with SLA tracking
+✅ **Investigation Timeline** - Chronological event reconstruction for forensic analysis
+✅ **Real-time Dashboard** - WebSocket-powered live threat monitoring with cross-pod broadcasting
+✅ **MITRE ATT&CK Mapping** - Automatic threat classification and technique identification
+✅ **Production-Ready** - Redis-backed storage, OpenTelemetry tracing, Prometheus metrics, health checks
+✅ **Kubernetes-Native** - Multi-pod deployment with HPA, shared state via Redis Pub/Sub
+✅ **Full Observability** - Distributed tracing (Jaeger), metrics (Prometheus), logs (Loki) with correlation
 
 ---
 
 ## 🏗️ Architecture
 
-### System Components
+### Production-Ready Multi-Pod Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      COORDINATOR AGENT                          │
-│                   (Enhanced Orchestration)                      │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-        ▼                     ▼                     ▼
-┌───────────────┐   ┌───────────────┐   ┌───────────────┐
-│   5 AGENTS    │   │  FP ANALYZER  │   │   RESPONSE    │
-│               │   │               │   │    ENGINE     │
-│ • Historical  │   │ • Pattern     │   │               │
-│ • Config      │   │   matching    │   │ • Block IP    │
-│ • DevOps      │   │ • Confidence  │   │ • Rate Limit  │
-│ • Context     │   │   scoring     │   │ • Whitelist   │
-│ • Priority    │   │ • FP history  │   │ • Escalate    │
-└───────────────┘   └───────────────┘   └───────────────┘
-        │                     │                     │
-        └─────────────────────┼─────────────────────┘
-                              ▼
-                  ┌───────────────────────┐
-                  │   TIMELINE BUILDER    │
-                  │                       │
-                  │ • Event correlation   │
-                  │ • Chronological view  │
-                  │ • Evidence chain      │
-                  └───────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              PRESENTATION LAYER                                  │
+│                                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │   Dashboard  │  │ Threat List  │  │   Filters    │  │   Details    │       │
+│  │              │  │ (Real-time)  │  │  (Multi-dim) │  │  (Tabbed)    │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘       │
+│                                                                                  │
+│  React Components + TailwindCSS + WebSocket Client                              │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        │ WebSocket / REST API
+                                        │
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         API GATEWAY LAYER (Multi-Pod)                            │
+│                                                                                  │
+│  ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐ │
+│  │   FastAPI Pod A      │  │   FastAPI Pod B      │  │   FastAPI Pod C      │ │
+│  │                      │  │                      │  │                      │ │
+│  │  /health  /ready     │  │  /health  /ready     │  │  /health  /ready     │ │
+│  │  /metrics            │  │  /metrics            │  │  /metrics            │ │
+│  │                      │  │                      │  │                      │ │
+│  │  WebSocket Clients:  │  │  WebSocket Clients:  │  │  WebSocket Clients:  │ │
+│  │  • User A, D         │  │  • User B, E         │  │  • User C            │ │
+│  └──────────────────────┘  └──────────────────────┘  └──────────────────────┘ │
+│                                                                                  │
+│  Kubernetes Service (Load Balancer) + HorizontalPodAutoscaler                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        │ Redis Pub/Sub
+                                        │
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              SHARED STATE LAYER                                  │
+│                                                                                  │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │                            Redis (Pub/Sub)                                 │ │
+│  │                                                                            │ │
+│  │  • threats:events channel (broadcasts to all pods)                        │ │
+│  │  • threat:{id} hashes (persistent storage)                                │ │
+│  │  • threats:by_created sorted set (ordering)                               │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        │ All pods process threats
+                                        │
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           AGENT PROCESSING LAYER                                 │
+│                                                                                  │
+│  ┌───────────────────────────────────────────────────────────────────────────┐ │
+│  │                         COORDINATOR AGENT                                  │ │
+│  │                      (Enhanced Orchestration)                              │ │
+│  └───────────────────────────────────────────────────────────────────────────┘ │
+│                                        │                                         │
+│        ┌───────────────────────────────┼───────────────────────────────┐        │
+│        │                               │                               │        │
+│        ▼                               ▼                               ▼        │
+│  ┌─────────────┐              ┌─────────────┐              ┌─────────────┐    │
+│  │  5 AGENTS   │              │FP ANALYZER  │              │  RESPONSE   │    │
+│  │             │              │             │              │   ENGINE    │    │
+│  │ • Historical│              │ • Pattern   │              │             │    │
+│  │ • Config    │              │   matching  │              │ • Block IP  │    │
+│  │ • DevOps    │              │ • Confidence│              │ • Rate Limit│    │
+│  │ • Context   │              │   scoring   │              │ • Whitelist │    │
+│  │ • Priority  │              │ • FP history│              │ • Escalate  │    │
+│  └─────────────┘              └─────────────┘              └─────────────┘    │
+│        │                               │                               │        │
+│        └───────────────────────────────┼───────────────────────────────┘        │
+│                                        ▼                                         │
+│                            ┌───────────────────────┐                            │
+│                            │   TIMELINE BUILDER    │                            │
+│                            │                       │                            │
+│                            │ • Event correlation   │                            │
+│                            │ • Chronological view  │                            │
+│                            │ • Evidence chain      │                            │
+│                            └───────────────────────┘                            │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        │ Export telemetry
+                                        │
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          OBSERVABILITY STACK                                     │
+│                                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │   Jaeger     │  │  Prometheus  │  │     Loki     │  │   Grafana    │       │
+│  │   (Traces)   │  │   (Metrics)  │  │    (Logs)    │  │ (Dashboards) │       │
+│  │              │  │              │  │              │  │              │       │
+│  │ :16686       │  │ :9090        │  │ :3100        │  │ :3000        │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘       │
+│                                                                                  │
+│  • Distributed tracing with OpenTelemetry                                       │
+│  • Custom metrics (threats_total, analysis_duration, websocket_connections)     │
+│  • Structured JSON logs with trace_id correlation                               │
+└─────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Key Architecture Features:**
+
+🔹 **Horizontal Scalability** - Multiple backend pods with load balancing
+🔹 **Shared State** - Redis-backed storage with Pub/Sub for cross-pod communication
+🔹 **Real-time Broadcasting** - All WebSocket clients receive all threats regardless of pod
+🔹 **Health Checks** - Kubernetes liveness (`/health`) and readiness (`/ready`) probes
+🔹 **Auto-scaling** - HorizontalPodAutoscaler based on CPU/memory metrics
+🔹 **Full Observability** - Traces, metrics, and logs with bidirectional correlation
 
 ### Specialized Agents
 
@@ -150,6 +227,40 @@ npm run dev
 
 Frontend will be available at: **http://localhost:5173**
 
+#### 4. Observability Stack (Optional)
+
+For production-grade monitoring with distributed tracing, metrics, and logs:
+
+```bash
+cd observability
+
+# Start the full observability stack
+docker-compose up -d
+
+# Verify all services are running
+docker-compose ps
+
+# Access the dashboards
+# Grafana:    http://localhost:3000 (admin/admin)
+# Prometheus: http://localhost:9090
+# Jaeger:     http://localhost:16686
+# Loki:       http://localhost:3100
+```
+
+**What You Get:**
+- 📊 **Grafana Dashboard** - Pre-configured SOC metrics visualization
+- 🔍 **Jaeger Tracing** - Distributed traces showing agent execution (9 spans per threat)
+- 📈 **Prometheus Metrics** - Custom metrics (threats_total, analysis_duration, etc.)
+- 📝 **Loki Logs** - Structured JSON logs with trace_id correlation
+
+**Trace-to-Logs Correlation:**
+1. Open Jaeger at http://localhost:16686
+2. Find a trace for "analyze_threat"
+3. Click "Logs for this span" → Opens Loki with correlated logs
+4. Or vice versa: Click trace_id in Loki → Opens Jaeger trace
+
+See **[Observability Stack README](./observability/README.md)** for detailed setup and usage.
+
 ---
 
 ## 📊 Usage
@@ -168,11 +279,19 @@ Frontend will be available at: **http://localhost:5173**
 
 ### API Endpoints
 
-- `GET /` - Health check
+**Core Endpoints:**
+- `GET /` - Root health check
 - `GET /api/threats` - List all threats (with optional filters)
 - `GET /api/threats/{id}` - Get specific threat details
 - `POST /api/threats/trigger` - Manually trigger threat analysis
-- `WS /ws` - WebSocket for real-time updates
+- `WS /ws` - WebSocket for real-time updates (Redis Pub/Sub)
+
+**Kubernetes Health Checks:**
+- `GET /health` - Liveness probe (always returns healthy if process alive)
+- `GET /ready` - Readiness probe (checks coordinator, agents, analyzers, Redis)
+
+**Observability:**
+- `GET /metrics` - Prometheus metrics endpoint (OpenMetrics format)
 
 ---
 
@@ -275,8 +394,9 @@ PORT=8000
 - **FastAPI 0.109** - Modern async web framework
 - **Pydantic 2.5** - Data validation and serialization
 - **OpenAI SDK 1.10** - LLM integration
+- **Redis 5.0** - Distributed storage and Pub/Sub
 - **Uvicorn** - ASGI server
-- **Pytest** - Testing framework
+- **Pytest** - Testing framework (83 tests)
 
 ### Frontend
 - **React 19.2** - UI framework
@@ -285,17 +405,41 @@ PORT=8000
 - **Axios** - HTTP client
 - **WebSocket API** - Real-time updates
 
+### Observability
+- **OpenTelemetry SDK** - Distributed tracing instrumentation
+- **Jaeger** - Trace visualization and analysis
+- **Prometheus** - Metrics collection and alerting
+- **Loki** - Log aggregation and querying
+- **Grafana** - Unified dashboards for metrics, traces, and logs
+- **python-json-logger** - Structured JSON logging
+
+### Infrastructure
+- **Docker** - Multi-stage containerization
+- **Kubernetes** - Orchestration with HPA and health checks
+- **Helm** - Package management (coming in Block 4)
+- **Kind** - Local Kubernetes testing
+
 ---
 
 ## 🤝 Contributing
 
-This is a demonstration project for technical interviews. For production use, consider:
+This is a demonstration project for technical interviews showcasing production-ready architecture patterns.
 
-1. **Database Integration** - Replace in-memory storage with PostgreSQL/MongoDB
-2. **Authentication** - Add JWT-based auth for API endpoints
-3. **Rate Limiting** - Implement API rate limiting
-4. **Monitoring** - Add Prometheus/Grafana for metrics
-5. **Logging** - Integrate with ELK stack for centralized logging
+**Already Implemented:**
+- ✅ Redis-backed distributed storage
+- ✅ Prometheus metrics and Grafana dashboards
+- ✅ Structured logging with Loki integration
+- ✅ OpenTelemetry distributed tracing
+- ✅ Kubernetes deployment with health checks
+- ✅ Docker multi-stage builds
+- ✅ Comprehensive test coverage (83 tests)
+
+**Future Enhancements:**
+1. **Authentication** - Add JWT-based auth for API endpoints
+2. **Rate Limiting** - Implement API rate limiting with Redis
+3. **Database** - Add PostgreSQL for long-term threat storage
+4. **RBAC** - Role-based access control for multi-tenant support
+5. **Alerting** - Integrate with PagerDuty/Slack for critical threats
 
 ---
 

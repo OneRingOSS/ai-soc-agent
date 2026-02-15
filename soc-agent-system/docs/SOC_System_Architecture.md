@@ -16,14 +16,18 @@ The SOC Agent System is a multi-agent threat analysis platform that provides aut
 6. [API Architecture](#api-architecture)
 7. [Frontend Architecture](#frontend-architecture)
 8. [Data Models](#data-models)
-9. [Deployment Architecture](#deployment-architecture)
-10. [Integration Points](#integration-points)
+9. [Production-Ready Architecture](#production-ready-architecture)
+   - [Redis Pub/Sub for Multi-Pod Broadcasting](#redis-pubsub-for-multi-pod-broadcasting)
+   - [Observability Stack](#observability-stack)
+   - [Kubernetes Deployment](#kubernetes-deployment)
+10. [Deployment Architecture](#deployment-architecture)
+11. [Integration Points](#integration-points)
 
 ---
 
 ## System Architecture
 
-### High-Level Architecture
+### High-Level Architecture (Production-Ready with Redis & Observability)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -40,21 +44,27 @@ The SOC Agent System is a multi-agent threat analysis platform that provides aut
                                         │ WebSocket / REST API
                                         │
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                               API GATEWAY LAYER                                  │
+│                         API GATEWAY LAYER (Multi-Pod)                            │
 │                                                                                  │
-│  ┌──────────────────────────────────────────────────────────────────┐          │
-│  │                     FastAPI Application                           │          │
-│  │                                                                    │          │
-│  │  • POST /api/threats/trigger    (Threat ingestion)                │          │
-│  │  • GET  /api/threats            (List threats with filters)       │          │
-│  │  • GET  /api/threats/{id}       (Threat detail)                   │          │
-│  │  • WS   /ws                     (Real-time updates)                │          │
-│  └──────────────────────────────────────────────────────────────────┘          │
-│                                                                                  │
-│  Request Validation (Pydantic) + CORS + Error Handling                          │
-└─────────────────────────────────────────────────────────────────────────────────┘
+│  ┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐ │
+│  │   FastAPI Pod A      │  │   FastAPI Pod B      │  │   FastAPI Pod C      │ │
+│  │                      │  │                      │  │                      │ │
+│  │  • POST /api/threats │  │  • POST /api/threats │  │  • POST /api/threats │ │
+│  │  • GET  /api/threats │  │  • GET  /api/threats │  │  • GET  /api/threats │ │
+│  │  • WS   /ws          │  │  • WS   /ws          │  │  • WS   /ws          │ │
+│  │  • GET  /health      │  │  • GET  /health      │  │  • GET  /health      │ │
+│  │  • GET  /ready       │  │  • GET  /ready       │  │  • GET  /ready       │ │
+│  │  • GET  /metrics     │  │  • GET  /metrics     │  │  • GET  /metrics     │ │
+│  └──────────┬───────────┘  └──────────┬───────────┘  └──────────┬───────────┘ │
+│             │                         │                         │              │
+│             └─────────────────────────┼─────────────────────────┘              │
+│                                       │                                         │
+│  Kubernetes Service (Load Balancer) + HorizontalPodAutoscaler                  │
+└───────────────────────────────────────┼─────────────────────────────────────────┘
                                         │
-                                        │
+                    ┌───────────────────┼───────────────────┐
+                    │                   │                   │
+                    ▼                   ▼                   ▼
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                            ORCHESTRATION LAYER                                   │
 │                                                                                  │
@@ -64,10 +74,12 @@ The SOC Agent System is a multi-agent threat analysis platform that provides aut
 │  │  Responsibilities:                                                 │          │
 │  │  • Receive threat signals                                          │          │
 │  │  • Orchestrate parallel agent execution                            │          │
-│  │  • Coordinate new analyzer execution                               │          │
+│  │  • Coordinate analyzer execution                                   │          │
 │  │  • Aggregate results                                               │          │
 │  │  • Determine severity and review requirements                      │          │
-│  │  • Publish results to WebSocket                                    │          │
+│  │  • Save to Redis (triggers Pub/Sub broadcast)                      │          │
+│  │  • Emit OpenTelemetry traces                                       │          │
+│  │  • Update Prometheus metrics                                       │          │
 │  └──────────────────────────────────────────────────────────────────┘          │
 │                                                                                  │
 └─────────────────────────────────────────────────────────────────────────────────┘
@@ -79,67 +91,84 @@ The SOC Agent System is a multi-agent threat analysis platform that provides aut
 │                                      │ │                                      │
 │  ┌────────────────────────────────┐ │ │  ┌────────────────────────────────┐ │
 │  │  Historical Analysis Agent     │ │ │  │  False Positive Analyzer       │ │
-│  │                                │ │ │  │                                │ │
 │  │  • Query past incidents        │ │ │  │  • User agent analysis         │ │
 │  │  • Pattern matching            │ │ │  │  • IP reputation checking      │ │
 │  │  • Resolution history          │ │ │  │  • Request volume analysis     │ │
 │  └────────────────────────────────┘ │ │  │  • Historical FP rate          │ │
 │                                      │ │  │  • Confidence scoring          │ │
-│  ┌────────────────────────────────┐ │ │  │  • Recommendation generation   │ │
-│  │  Config/Context Agent          │ │ │  └────────────────────────────────┘ │
-│  │                                │ │ │                                      │
+│  ┌────────────────────────────────┐ │ │  └────────────────────────────────┘ │
+│  │  Config/Context Agent          │ │ │                                      │
 │  │  • Customer tier lookup        │ │ │  ┌────────────────────────────────┐ │
 │  │  • Rate limit configuration    │ │ │  │  Response Action Engine        │ │
-│  │  • Security settings           │ │ │  │                                │ │
-│  │  • Whitelists/blacklists       │ │ │  │  • Threat-severity mapping     │ │
+│  │  • Security settings           │ │ │  │  • Threat-severity mapping     │ │
 │  └────────────────────────────────┘ │ │  │  • Action recommendation       │ │
 │                                      │ │  │  • SLA calculation             │ │
 │  ┌────────────────────────────────┐ │ │  │  • Escalation path building    │ │
-│  │  DevOps Context Agent          │ │ │  │  • Approval workflow           │ │
-│  │                                │ │ │  │  • Auto-execution logic        │ │
-│  │  • Deployment tracking         │ │ │  └────────────────────────────────┘ │
-│  │  • Infrastructure events       │ │ │                                      │
-│  │  • Config changes              │ │ │  ┌────────────────────────────────┐ │
-│  │  • Correlation detection       │ │ │  │  Timeline Builder              │ │
-│  └────────────────────────────────┘ │ │  │                                │ │
-│                                      │ │  │  • Event chronology            │ │
-│  ┌────────────────────────────────┐ │ │  │  • Phase tracking              │ │
-│  │  External Context Agent        │ │ │  │  • Evidence chain              │ │
-│  │                                │ │ │  │  • Duration calculation        │ │
-│  │  • News monitoring             │ │ │  │  • Audit trail generation      │ │
-│  │  • Threat intel feeds          │ │ │  └────────────────────────────────┘ │
-│  │  • CVE tracking                │ │ │                                      │
-│  │  • Industry alerts             │ │ └──────────────────────────────────────┘
+│  │  DevOps Context Agent          │ │ │  └────────────────────────────────┘ │
+│  │  • Deployment tracking         │ │ │                                      │
+│  │  • Infrastructure events       │ │ │  ┌────────────────────────────────┐ │
+│  │  • Config changes              │ │ │  │  Timeline Builder              │ │
+│  └────────────────────────────────┘ │ │  │  • Event chronology            │ │
+│                                      │ │  │  • Phase tracking              │ │
+│  ┌────────────────────────────────┐ │ │  │  • Evidence chain              │ │
+│  │  External Context Agent        │ │ │  └────────────────────────────────┘ │
+│  │  • News monitoring             │ │ │                                      │
+│  │  • Threat intel feeds          │ │ └──────────────────────────────────────┘
+│  │  • CVE tracking                │ │
 │  └────────────────────────────────┘ │
 │                                      │
 │  ┌────────────────────────────────┐ │
 │  │  Priority/Severity Agent       │ │
-│  │                                │ │
 │  │  • Risk scoring                │ │
 │  │  • Severity classification     │ │
 │  │  • MITRE ATT&CK mapping        │ │
-│  │  • Review requirement logic    │ │
 │  └────────────────────────────────┘ │
-│                                      │
 └──────────────────────────────────────┘
                     │
                     │
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│                               DATA LAYER                                         │
+│                          DATA & INFRASTRUCTURE LAYER                             │
+│                                                                                  │
+│  ┌──────────────────────────────────────────────────────────────────┐          │
+│  │                    REDIS (Shared State)                           │          │
+│  │                                                                    │          │
+│  │  Storage:                                                          │          │
+│  │  • threat:{id} → JSON (hash)                                      │          │
+│  │  • threats:by_created → sorted set                                │          │
+│  │                                                                    │          │
+│  │  Pub/Sub:                                                          │          │
+│  │  • Channel: "threats:events"                                      │          │
+│  │  • Subscribers: All backend pods                                  │          │
+│  │  • Enables cross-pod WebSocket broadcasting                       │          │
+│  └──────────────────────────────────────────────────────────────────┘          │
 │                                                                                  │
 │  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐             │
-│  │  Mock Data Store │  │  Threat Storage  │  │   Event Store    │             │
+│  │  Mock Data Store │  │   Event Store    │  │  Health Checks   │             │
 │  │                  │  │                  │  │                  │             │
-│  │  • Historical    │  │  • Active        │  │  • Audit logs    │             │
-│  │    incidents     │  │    threats       │  │  • Timeline      │             │
-│  │  • Customer      │  │  • Analysis      │  │    events        │             │
-│  │    configs       │  │    results       │  │  • Actions taken │             │
-│  │  • Infra events  │  │  • FP scores     │  │                  │             │
-│  │  • News items    │  │  • Response      │  │                  │             │
-│  │                  │  │    plans         │  │                  │             │
+│  │  • Historical    │  │  • Audit logs    │  │  • Liveness      │             │
+│  │    incidents     │  │  • Timeline      │  │  • Readiness     │             │
+│  │  • Customer      │  │    events        │  │  • Redis health  │             │
+│  │    configs       │  │  • Actions taken │  │                  │             │
+│  │  • Infra events  │  │                  │  │                  │             │
 │  └──────────────────┘  └──────────────────┘  └──────────────────┘             │
+└─────────────────────────────────────────────────────────────────────────────────┘
+                                        │
+                                        │
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                          OBSERVABILITY STACK                                     │
 │                                                                                  │
-│  In-Memory (Demo) → PostgreSQL/MongoDB (Production)                             │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
+│  │   Jaeger     │  │  Prometheus  │  │  Loki        │  │   Grafana    │       │
+│  │              │  │              │  │  + Promtail  │  │              │       │
+│  │  Distributed │  │  Metrics     │  │  Log         │  │  Unified     │       │
+│  │  Tracing     │  │  Collection  │  │  Aggregation │  │  Dashboard   │       │
+│  │              │  │              │  │              │  │              │       │
+│  │  • Spans     │  │  • Counters  │  │  • JSON logs │  │  • Metrics   │       │
+│  │  • Traces    │  │  • Gauges    │  │  • Trace IDs │  │  • Traces    │       │
+│  │  • Timeline  │  │  • Histogram │  │  • Filtering │  │  • Logs      │       │
+│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────────┘       │
+│                                                                                  │
+│  Three Pillars: Metrics, Traces, Logs (with correlation)                        │
 └─────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -292,15 +321,52 @@ The SOC Agent System is a multi-agent threat analysis platform that provides aut
          │
          ▼
 ┌─────────────────────────────────────────────┐
-│  7. DELIVERY                                │
+│  7. REDIS STORAGE & PUB/SUB (NEW)           │
 │                                             │
-│  • Store in threat database                 │
-│  • Broadcast via WebSocket                  │
-│  • Update dashboard UI                      │
+│  ┌──────────────────────────────┐          │
+│  │  Redis Store                 │          │
+│  │                              │          │
+│  │  1. Save to Redis hash:      │          │
+│  │     threat:{id} → JSON       │          │
+│  │                              │          │
+│  │  2. Add to sorted set:       │          │
+│  │     threats:by_created       │          │
+│  │                              │          │
+│  │  3. PUBLISH to Pub/Sub:      │          │
+│  │     Channel: threats:events  │          │
+│  │     → ALL pods receive it!   │          │
+│  └──────────────────────────────┘          │
+│                                             │
+│  Duration: ~5-10ms                          │
+└────────┬────────────────────────────────────┘
+         │
+         │ Redis Pub/Sub Broadcast
+         │
+         ▼
+┌─────────────────────────────────────────────┐
+│  8. CROSS-POD WEBSOCKET DELIVERY (NEW)      │
+│                                             │
+│  All backend pods subscribe to Redis        │
+│  Pub/Sub channel "threats:events"           │
+│                                             │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐ │
+│  │  Pod A   │  │  Pod B   │  │  Pod C   │ │
+│  │          │  │          │  │          │ │
+│  │  WS: A,D │  │  WS: B,E │  │  WS: C   │ │
+│  └──────────┘  └──────────┘  └──────────┘ │
+│                                             │
+│  ALL WebSocket clients receive the threat   │
+│  regardless of which pod they're connected  │
+│                                             │
+│  • Update dashboard UI in real-time         │
 │  • Trigger alerts if needed                 │
+│  • Emit OpenTelemetry events                │
+│  • Update Prometheus metrics                │
 └─────────────────────────────────────────────┘
 
-Total Duration: ~500-1000ms per threat
+Total Duration: ~500-1000ms per threat (analysis)
+                + ~5-10ms (Redis storage)
+                + <1ms (WebSocket broadcast per client)
 ```
 
 ### Data Flow Metrics
@@ -986,6 +1052,685 @@ class TimelineEventType(str, Enum):
     DECISION = "decision"
     ACTION = "action"
 ```
+
+---
+
+## Production-Ready Architecture
+
+### Redis Pub/Sub for Multi-Pod Broadcasting
+
+#### The Split-Brain Problem
+
+When deploying the SOC Agent System in Kubernetes with multiple replicas, the original in-memory architecture caused a **split-brain problem**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Kubernetes Cluster                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌────────────────────┐         ┌────────────────────┐      │
+│  │   Backend Pod A    │         │   Backend Pod B    │      │
+│  │                    │         │                    │      │
+│  │  threat_store = [] │         │  threat_store = [] │      │
+│  │  [Threat 1]        │         │  [Threat 2]        │      │
+│  │                    │         │                    │      │
+│  │  WebSocket Clients:│         │  WebSocket Clients:│      │
+│  │  • User A          │         │  • User B          │      │
+│  └────────────────────┘         └────────────────────┘      │
+│                                                               │
+│  ❌ User A only sees Threat 1                                │
+│  ❌ User B only sees Threat 2                                │
+│  ❌ Inconsistent state across pods!                          │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Problem**: Each pod has its own in-memory threat store. WebSocket clients connected to different pods see different threats, causing inconsistent user experience.
+
+#### The Solution: Redis-Backed Storage with Pub/Sub
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Kubernetes Cluster                        │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌────────────────────┐         ┌────────────────────┐      │
+│  │   Backend Pod A    │         │   Backend Pod B    │      │
+│  │                    │         │                    │      │
+│  │  RedisStore        │         │  RedisStore        │      │
+│  │  (shared state)    │         │  (shared state)    │      │
+│  │                    │         │                    │      │
+│  │  WebSocket Clients:│         │  WebSocket Clients:│      │
+│  │  • User A ─────────┼─────┐   │  • User B          │      │
+│  └────────────────────┘     │   └────────────────────┘      │
+│           │                 │            │                   │
+│           │ Subscribe       │            │ Subscribe         │
+│           ▼                 │            ▼                   │
+│  ┌─────────────────────────┴────────────────────────┐       │
+│  │              Redis (External Service)             │       │
+│  │                                                    │       │
+│  │  Storage:                                          │       │
+│  │  • threat:{id} → JSON (hash)                      │       │
+│  │  • threats:by_created → sorted set                │       │
+│  │                                                    │       │
+│  │  Pub/Sub:                                          │       │
+│  │  • Channel: "threats:events"                      │       │
+│  │  • Subscribers: All pods                          │       │
+│  └────────────────────────────────────────────────────┘      │
+│                                                               │
+│  ✅ User A sees ALL threats (via Redis Pub/Sub)              │
+│  ✅ User B sees ALL threats (via Redis Pub/Sub)              │
+│  ✅ Consistent state across all pods!                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### How It Works: Step-by-Step Flow
+
+**1. Threat Analysis Completes**
+
+```python
+# In coordinator.py
+async def analyze_threat(signal: ThreatSignal) -> EnhancedThreatAnalysis:
+    # ... agent execution, FP analysis, response planning ...
+
+    analysis = EnhancedThreatAnalysis(...)
+
+    # Save to Redis (triggers Pub/Sub broadcast)
+    await threat_store.save_threat(analysis)
+
+    return analysis
+```
+
+**2. Redis Store Saves and Publishes**
+
+```python
+# In store.py - RedisStore.save_threat()
+async def save_threat(self, threat: ThreatAnalysis) -> None:
+    # Step 1: Store in Redis hash
+    await self.redis.hset(
+        f"threat:{threat.signal.id}",
+        mapping={"data": threat.model_dump_json()}
+    )
+
+    # Step 2: Add to sorted set for ordering
+    await self.redis.zadd(
+        "threats:by_created",
+        {threat.signal.id: threat.signal.timestamp.timestamp()}
+    )
+
+    # Step 3: PUBLISH to Pub/Sub channel → ALL pods receive it!
+    await self.redis.publish(
+        "threats:events",  # Channel name
+        threat.model_dump_json()  # Payload
+    )
+```
+
+**3. All Pods Subscribe to Redis Pub/Sub**
+
+```python
+# In store.py - RedisStore.subscribe_threats()
+async def subscribe_threats(self) -> AsyncGenerator[ThreatAnalysis, None]:
+    """Subscribe to threat events via Redis Pub/Sub."""
+    await self._ensure_connected()
+    pubsub = self.redis.pubsub()
+    await pubsub.subscribe("threats:events")
+
+    async for message in pubsub.listen():
+        if message["type"] == "message":
+            threat_data = json.loads(message["data"])
+            yield ThreatAnalysis(**threat_data)
+```
+
+**4. WebSocket Handler Broadcasts to Clients**
+
+```python
+# In main.py - WebSocket endpoint
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    websocket_clients.append(websocket)
+
+    # Send initial batch
+    initial_threats = await threat_store.get_threats(limit=20)
+    await websocket.send_json({
+        "type": "initial_batch",
+        "data": [json.loads(t.model_dump_json()) for t in initial_threats]
+    })
+
+    # Subscribe to Redis Pub/Sub for new threats
+    async def send_threats():
+        async for threat in threat_store.subscribe_threats():
+            try:
+                await websocket.send_json({
+                    "type": "new_threat",
+                    "data": json.loads(threat.model_dump_json())
+                })
+            except Exception as e:
+                logger.error(f"Failed to send threat: {e}")
+                break
+
+    # Start subscription task
+    threat_task = asyncio.create_task(send_threats())
+
+    # Keep connection alive
+    try:
+        while True:
+            data = await asyncio.wait_for(websocket.receive_json(), timeout=30)
+            if data.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+    finally:
+        threat_task.cancel()
+        websocket_clients.remove(websocket)
+```
+
+#### Architecture Comparison
+
+| Aspect | Before (In-Memory) | After (Redis Pub/Sub) |
+|--------|-------------------|----------------------|
+| **Storage** | `List[ThreatAnalysis]` per pod | Redis hashes + sorted sets |
+| **State Sharing** | ❌ None (split-brain) | ✅ Shared across all pods |
+| **WebSocket Broadcast** | Local clients only | All clients on all pods |
+| **Scalability** | ❌ Limited to 1 pod | ✅ Horizontal scaling |
+| **High Availability** | ❌ Single point of failure | ✅ Multi-pod redundancy |
+| **Data Persistence** | ❌ Lost on restart | ✅ Persisted in Redis |
+| **Cross-Pod Communication** | ❌ Not possible | ✅ Redis Pub/Sub |
+
+#### Real-World Example Scenario
+
+**Scenario**: 3 backend pods, 5 WebSocket clients
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Step 1: Threat Detected on Pod A                            │
+│                                                               │
+│  POST /api/threats/trigger → Pod A                           │
+│  └─> coordinator.analyze_threat()                            │
+│      └─> threat_store.save_threat(analysis)                  │
+│          └─> Redis PUBLISH "threats:events" {threat_data}    │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            │ Redis Pub/Sub Broadcast
+                            │
+        ┌───────────────────┼───────────────────┐
+        │                   │                   │
+        ▼                   ▼                   ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Pod A      │    │   Pod B      │    │   Pod C      │
+│              │    │              │    │              │
+│  WS Clients: │    │  WS Clients: │    │  WS Clients: │
+│  • User A    │    │  • User B    │    │  • User C    │
+│  • User D    │    │  • User E    │    │              │
+└──────────────┘    └──────────────┘    └──────────────┘
+        │                   │                   │
+        └───────────────────┴───────────────────┘
+                            │
+                ✅ ALL 5 users receive the threat!
+```
+
+**Result**:
+- ✅ User A (Pod A): Sees threat X
+- ✅ User B (Pod B): Sees threat X (via Redis Pub/Sub)
+- ✅ User C (Pod C): Sees threat X (via Redis Pub/Sub)
+- ✅ User D (Pod A): Sees threat X
+- ✅ User E (Pod B): Sees threat X (via Redis Pub/Sub)
+
+#### Sequence Diagram: Multi-Pod Threat Processing with Redis Pub/Sub
+
+```mermaid
+sequenceDiagram
+    participant Client as Client (Browser)
+    participant LB as Load Balancer
+    participant PodA as Backend Pod A
+    participant PodB as Backend Pod B
+    participant PodC as Backend Pod C
+    participant Redis as Redis
+    participant WSA as WebSocket Client A<br/>(connected to Pod A)
+    participant WSB as WebSocket Client B<br/>(connected to Pod B)
+    participant WSC as WebSocket Client C<br/>(connected to Pod C)
+    participant Jaeger as Jaeger (Traces)
+    participant Prom as Prometheus (Metrics)
+
+    Note over PodA,PodC: All pods subscribe to Redis Pub/Sub on startup
+    PodA->>Redis: SUBSCRIBE "threats:events"
+    PodB->>Redis: SUBSCRIBE "threats:events"
+    PodC->>Redis: SUBSCRIBE "threats:events"
+
+    Note over WSA,WSC: WebSocket clients connect to different pods
+    WSA->>PodA: WebSocket connect /ws
+    PodA->>WSA: Send initial batch (last 20 threats)
+    WSB->>PodB: WebSocket connect /ws
+    PodB->>WSB: Send initial batch (last 20 threats)
+    WSC->>PodC: WebSocket connect /ws
+    PodC->>WSC: Send initial batch (last 20 threats)
+
+    Note over Client,Prom: New threat arrives at Pod A
+    Client->>LB: POST /api/threats/trigger
+    LB->>PodA: Route to Pod A
+
+    activate PodA
+    PodA->>Jaeger: Start trace "analyze_threat"
+    PodA->>Prom: Increment soc_threats_total
+
+    Note over PodA: Parallel agent execution
+    par Historical Agent
+        PodA->>PodA: historical_agent.analyze()
+        PodA->>Jaeger: Span "historical_agent"
+    and Config Agent
+        PodA->>PodA: config_agent.analyze()
+        PodA->>Jaeger: Span "config_agent"
+    and DevOps Agent
+        PodA->>PodA: devops_agent.analyze()
+        PodA->>Jaeger: Span "devops_agent"
+    and Context Agent
+        PodA->>PodA: context_agent.analyze()
+        PodA->>Jaeger: Span "context_agent"
+    and Priority Agent
+        PodA->>PodA: priority_agent.analyze()
+        PodA->>Jaeger: Span "priority_agent"
+    end
+
+    Note over PodA: Sequential analyzer execution
+    PodA->>PodA: fp_analyzer.analyze()
+    PodA->>Jaeger: Span "fp_analyzer"
+    PodA->>PodA: response_engine.generate_plan()
+    PodA->>Jaeger: Span "response_engine"
+    PodA->>PodA: timeline_builder.build()
+    PodA->>Jaeger: Span "timeline_builder"
+
+    Note over PodA,Redis: Save to Redis and broadcast
+    PodA->>Redis: HSET threat:{id} {json_data}
+    PodA->>Redis: ZADD threats:by_created {id} {timestamp}
+    PodA->>Redis: PUBLISH "threats:events" {threat_json}
+    PodA->>Prom: Record analysis_duration_seconds
+    PodA->>Jaeger: End trace
+    deactivate PodA
+
+    PodA->>Client: 200 OK {threat_analysis}
+
+    Note over Redis,WSC: Redis broadcasts to ALL subscribed pods
+    Redis-->>PodA: Message on "threats:events"
+    Redis-->>PodB: Message on "threats:events"
+    Redis-->>PodC: Message on "threats:events"
+
+    Note over PodA,WSC: All pods broadcast to their WebSocket clients
+    PodA->>WSA: WebSocket message {new_threat}
+    PodB->>WSB: WebSocket message {new_threat}
+    PodC->>WSC: WebSocket message {new_threat}
+
+    Note over WSA,WSC: ✅ All clients receive the threat!
+    WSA->>WSA: Update UI
+    WSB->>WSB: Update UI
+    WSC->>WSC: Update UI
+```
+
+#### Fallback Mechanism
+
+For local development without Redis:
+
+```python
+# In store.py - create_store() factory
+async def create_store(redis_url: str, max_threats: int = 100) -> ThreatStore:
+    """Create a threat store instance with automatic fallback."""
+    try:
+        store = RedisStore(redis_url, max_threats)
+        await store._ensure_connected()
+        await store.redis.ping()
+        logger.info("✅ Redis connection successful - using RedisStore")
+        return store
+    except Exception as e:
+        logger.warning(f"⚠️  Redis unavailable ({e}), falling back to in-memory store")
+        return InMemoryStore(max_threats)
+```
+
+**InMemoryStore** simulates Pub/Sub using `asyncio.Queue`:
+- Single-pod development works without Redis
+- Tests run without external dependencies
+- Production always uses Redis for multi-pod deployments
+
+---
+
+### Observability Stack
+
+The SOC Agent System includes a comprehensive observability stack implementing the **Three Pillars of Observability**: Metrics, Traces, and Logs.
+
+#### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Backend Pods (Instrumented)                   │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  OpenTelemetry SDK Integration                             │ │
+│  │                                                             │ │
+│  │  • Service Name: "soc-agent-system"                        │ │
+│  │  • OTLP Exporter → Jaeger (port 4317)                      │ │
+│  │  • Automatic span creation for all agents                  │ │
+│  │  • Context propagation across async calls                  │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Prometheus Metrics                                        │ │
+│  │                                                             │ │
+│  │  • /metrics endpoint (always enabled)                      │ │
+│  │  • Custom metrics:                                         │ │
+│  │    - soc_threats_total (counter)                           │ │
+│  │    - soc_threats_by_severity (counter)                     │ │
+│  │    - soc_threats_by_type (counter)                         │ │
+│  │    - soc_analysis_duration_seconds (histogram)             │ │
+│  │    - soc_agent_execution_duration_seconds (histogram)      │ │
+│  │    - soc_active_websocket_connections (gauge)              │ │
+│  └────────────────────────────────────────────────────────────┘ │
+│                                                                  │
+│  ┌────────────────────────────────────────────────────────────┐ │
+│  │  Structured JSON Logging                                   │ │
+│  │                                                             │ │
+│  │  • python-json-logger 2.0.7                                │ │
+│  │  • Custom OTelJsonFormatter                                │ │
+│  │  • Fields: timestamp, level, message, trace_id, span_id    │ │
+│  │  • Log file: /var/log/soc-agent/app.log                    │ │
+│  └────────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            │ Export to Observability Stack
+                            │
+        ┌───────────────────┼───────────────────┬───────────────┐
+        │                   │                   │               │
+        ▼                   ▼                   ▼               ▼
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Jaeger     │    │  Prometheus  │    │  Loki        │    │   Grafana    │
+│              │    │              │    │  + Promtail  │    │              │
+│  Port: 16686 │    │  Port: 9090  │    │  Port: 3100  │    │  Port: 3000  │
+│              │    │              │    │              │    │              │
+│  • Traces    │    │  • Metrics   │    │  • Logs      │    │  • Dashboards│
+│  • Spans     │    │  • Scraping  │    │  • Indexing  │    │  • Queries   │
+│  • Timeline  │    │  • Queries   │    │  • Search    │    │  • Alerts    │
+│  • Search    │    │  • Alerts    │    │  • Filtering │    │  • Panels    │
+└──────────────┘    └──────────────┘    └──────────────┘    └──────────────┘
+        │                   │                   │               │
+        └───────────────────┴───────────────────┴───────────────┘
+                                    │
+                                    ▼
+                        ┌──────────────────────┐
+                        │  Unified Dashboard   │
+                        │                      │
+                        │  • Metrics graphs    │
+                        │  • Trace timeline    │
+                        │  • Log viewer        │
+                        │  • Trace-to-logs     │
+                        │    correlation       │
+                        └──────────────────────┘
+```
+
+#### Pillar 1: Distributed Tracing (Jaeger)
+
+**Purpose**: Track request flow across all agents and analyzers
+
+**Implementation**:
+```python
+# In coordinator.py
+from opentelemetry import trace
+
+tracer = trace.get_tracer(__name__)
+
+async def analyze_threat(signal: ThreatSignal) -> EnhancedThreatAnalysis:
+    with tracer.start_as_current_span("analyze_threat") as span:
+        span.set_attribute("threat.type", signal.threat_type)
+        span.set_attribute("threat.severity", severity)
+
+        # Each agent creates a child span
+        agent_results = await asyncio.gather(
+            historical_agent.analyze(signal),  # Creates span
+            config_agent.analyze(signal),      # Creates span
+            # ... etc
+        )
+```
+
+**Expected Trace Structure** (9 spans per threat):
+```
+analyze_threat (parent span)
+├── historical_agent.analyze
+├── config_agent.analyze
+├── devops_agent.analyze
+├── context_agent.analyze
+├── priority_agent.analyze
+├── fp_analyzer.analyze
+├── response_engine.generate_plan
+└── timeline_builder.build
+```
+
+**Benefits**:
+- Visualize end-to-end request flow
+- Identify performance bottlenecks
+- Debug agent execution order
+- Measure parallel vs sequential execution
+
+#### Pillar 2: Metrics (Prometheus)
+
+**Purpose**: Track system performance and business metrics
+
+**Custom Metrics**:
+
+| Metric Name | Type | Labels | Purpose |
+|-------------|------|--------|---------|
+| `soc_threats_total` | Counter | `type`, `severity` | Total threats processed |
+| `soc_threats_by_severity` | Counter | `severity` | Threats by severity level |
+| `soc_threats_by_type` | Counter | `type` | Threats by type |
+| `soc_analysis_duration_seconds` | Histogram | `type` | Analysis duration distribution |
+| `soc_agent_execution_duration_seconds` | Histogram | `agent` | Per-agent execution time |
+| `soc_active_websocket_connections` | Gauge | - | Current WebSocket connections |
+
+**Example Queries**:
+```promql
+# Threat processing rate (per minute)
+rate(soc_threats_total[1m])
+
+# 95th percentile analysis duration
+histogram_quantile(0.95, soc_analysis_duration_seconds_bucket)
+
+# Critical threats in last hour
+increase(soc_threats_by_severity{severity="critical"}[1h])
+
+# Average agent execution time
+avg(soc_agent_execution_duration_seconds) by (agent)
+```
+
+#### Pillar 3: Structured Logging (Loki)
+
+**Purpose**: Centralized log aggregation with trace correlation
+
+**Log Format** (JSON):
+```json
+{
+  "timestamp": "2024-01-15T10:30:45.123Z",
+  "level": "INFO",
+  "message": "Threat analysis completed",
+  "trace_id": "a1b2c3d4e5f6g7h8",
+  "span_id": "1234567890abcdef",
+  "threat_id": "uuid-here",
+  "severity": "high",
+  "processing_time_ms": 850
+}
+```
+
+**Key Features**:
+- **Trace ID Injection**: Every log line includes `trace_id` and `span_id` from OpenTelemetry context
+- **Structured Fields**: Easy filtering and searching
+- **Promtail Integration**: Automatic log collection from all pods
+- **Grafana Integration**: Click trace ID in logs → jump to Jaeger trace
+
+**Example LogQL Queries**:
+```logql
+# All ERROR logs in last hour
+{job="soc-backend"} | json | level="ERROR"
+
+# Logs for specific threat
+{job="soc-backend"} | json | threat_id="abc-123"
+
+# Logs for specific trace (correlation!)
+{job="soc-backend"} | json | trace_id="a1b2c3d4e5f6g7h8"
+
+# Slow requests (>1s)
+{job="soc-backend"} | json | processing_time_ms > 1000
+```
+
+#### Trace-to-Logs Correlation
+
+**The Power of Correlation**:
+
+1. **Start in Jaeger**: View a slow trace
+2. **Copy Trace ID**: `a1b2c3d4e5f6g7h8`
+3. **Jump to Loki**: Query `{job="soc-backend"} | json | trace_id="a1b2c3d4e5f6g7h8"`
+4. **See All Logs**: For that specific request across all agents
+
+**Bidirectional Navigation**:
+- Trace → Logs: Click "Logs" button in Jaeger
+- Logs → Trace: Click trace ID in Grafana log viewer
+
+#### Health Checks for Kubernetes
+
+**Liveness Probe** (`/health`):
+```python
+@app.get("/health")
+async def health_check():
+    """Always returns healthy if process is alive."""
+    return {"status": "healthy"}
+```
+
+**Readiness Probe** (`/ready`):
+```python
+@app.get("/ready")
+async def readiness_check():
+    """Checks if all components are ready."""
+    components = {
+        "coordinator": coordinator is not None,
+        "agents": all agents initialized,
+        "analyzers": all analyzers initialized,
+        "store": threat_store is not None,
+        "redis": await redis.ping() if RedisStore else True
+    }
+
+    all_ready = all(components.values())
+    status_code = 200 if all_ready else 503
+
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "ready" if all_ready else "not_ready", "components": components}
+    )
+```
+
+**Kubernetes Configuration**:
+```yaml
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 5
+```
+
+#### Observability Stack Deployment
+
+**Docker Compose** (`observability/docker-compose.yml`):
+```yaml
+version: '3.8'
+
+services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.52
+    ports:
+      - "16686:16686"  # UI
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+
+  prometheus:
+    image: prom/prometheus:v2.48.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  loki:
+    image: grafana/loki:2.9.3
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:2.9.3
+    volumes:
+      - /var/log:/var/log
+      - ./promtail-config.yml:/etc/promtail/config.yml
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+    volumes:
+      - ./grafana-dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana-datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+```
+
+**Start the Stack**:
+```bash
+cd observability
+docker-compose up -d
+
+# Access UIs:
+# Jaeger:     http://localhost:16686
+# Prometheus: http://localhost:9090
+# Grafana:    http://localhost:3000
+```
+
+---
+
+### Kubernetes Deployment
+
+The SOC Agent System is designed for production deployment on Kubernetes with:
+
+#### Key Features
+
+1. **Horizontal Pod Autoscaling (HPA)**
+   - Scale based on CPU/memory usage
+   - Scale based on custom metrics (e.g., `soc_threats_total`)
+   - Min replicas: 2, Max replicas: 10
+
+2. **Redis-Backed Shared State**
+   - All pods share threat data via Redis
+   - Cross-pod WebSocket broadcasting via Pub/Sub
+   - Graceful fallback to in-memory for local dev
+
+3. **Health Checks**
+   - Liveness probe: `/health` (process alive)
+   - Readiness probe: `/ready` (all components ready, including Redis)
+
+4. **Observability Integration**
+   - OpenTelemetry traces exported to Jaeger
+   - Prometheus metrics scraped from `/metrics`
+   - Structured logs collected by Promtail → Loki
+
+5. **Load Balancing**
+   - Kubernetes Service distributes traffic across pods
+   - WebSocket connections balanced across replicas
+   - All clients receive all threats via Redis Pub/Sub
+
+#### Deployment Files
+
+See `kubernetes/` directory for:
+- `deployment.yaml` - Backend deployment with 3 replicas
+- `service.yaml` - LoadBalancer service
+- `hpa.yaml` - HorizontalPodAutoscaler
+- `redis.yaml` - Redis StatefulSet
+- `configmap.yaml` - Configuration
+- `ingress.yaml` - Ingress rules
 
 ---
 
