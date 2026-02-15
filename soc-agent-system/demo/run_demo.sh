@@ -94,6 +94,17 @@ read -p "Run real API test? (y/N): " -n 1 -r
 echo ""
 
 if [[ $REPLY =~ ^[Yy]$ ]]; then
+  # Try to load API key from backend/.env if not already set
+  if [ -z "$OPENAI_API_KEY" ]; then
+    BACKEND_ENV="$SCRIPT_DIR/../backend/.env"
+    if [ -f "$BACKEND_ENV" ]; then
+      echo ""
+      echo "📄 Loading OPENAI_API_KEY from backend/.env..."
+      # Source the .env file to get the API key
+      export $(grep -v '^#' "$BACKEND_ENV" | grep OPENAI_API_KEY | xargs)
+    fi
+  fi
+
   if [ -z "$OPENAI_API_KEY" ]; then
     echo ""
     echo "❌ OPENAI_API_KEY is not set!"
@@ -115,14 +126,13 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
 
     START_TIME=$(date +%s)
 
-    RESPONSE=$(curl -s -X POST http://localhost:8000/api/threats/trigger \
+    # Use a temp file to capture response
+    TEMP_FILE=$(mktemp)
+    HTTP_CODE=$(curl -s -X POST http://localhost:8000/api/threats/trigger \
       -H "Content-Type: application/json" \
       -d '{"threat_type": "bot_traffic"}' \
-      -w "\n%{http_code}\n%{time_total}")
-
-    HTTP_CODE=$(echo "$RESPONSE" | tail -2 | head -1)
-    TIME_TOTAL=$(echo "$RESPONSE" | tail -1)
-    BODY=$(echo "$RESPONSE" | head -n -2)
+      -w "%{http_code}" \
+      -o "$TEMP_FILE")
 
     END_TIME=$(date +%s)
     DURATION=$((END_TIME - START_TIME))
@@ -131,20 +141,46 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     if [ "$HTTP_CODE" = "200" ]; then
       echo "✅ Real API test completed successfully!"
       echo "   HTTP Status: $HTTP_CODE"
-      echo "   Response Time: ${TIME_TOTAL}s (${DURATION}s wall time)"
+      echo "   Response Time: ${DURATION}s"
+      echo ""
+
+      # Show a snippet of the response
+      if [ -f "$TEMP_FILE" ]; then
+        THREAT_ID=$(grep -o '"id":"[^"]*"' "$TEMP_FILE" | head -1 | cut -d'"' -f4)
+        SEVERITY=$(grep -o '"severity":"[^"]*"' "$TEMP_FILE" | head -1 | cut -d'"' -f4)
+        if [ -n "$THREAT_ID" ]; then
+          echo "   Threat ID: $THREAT_ID"
+          echo "   Severity: $SEVERITY"
+        fi
+      fi
+
       echo ""
       echo "   Check Jaeger for the distributed trace showing real OpenAI API calls!"
       echo "   → http://localhost:16686/search?service=soc-agent-system"
     else
       echo "❌ Real API test failed!"
       echo "   HTTP Status: $HTTP_CODE"
-      echo "   Response Time: ${TIME_TOTAL}s"
+      echo "   Response Time: ${DURATION}s"
+      echo ""
+
+      # Show error details if available
+      if [ -f "$TEMP_FILE" ]; then
+        ERROR_MSG=$(cat "$TEMP_FILE" | head -c 200)
+        if [ -n "$ERROR_MSG" ]; then
+          echo "   Error: $ERROR_MSG"
+        fi
+      fi
+
       echo ""
       echo "   This is likely due to:"
       echo "   - Invalid API key"
       echo "   - OpenAI rate limits"
       echo "   - Network issues"
     fi
+
+    # Clean up temp file
+    rm -f "$TEMP_FILE"
+
     echo ""
     sleep 2
   fi
