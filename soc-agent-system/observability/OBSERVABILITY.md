@@ -282,10 +282,7 @@ The observability stack provides **bidirectional correlation** between traces an
 
 ### Reverse Correlation: Traces → Logs
 
-**How it works**:
-1. When viewing a trace in Jaeger, each span has a "Logs" button
-2. Clicking opens Grafana Explore with Loki logs filtered by `trace_id`
-3. Time range is automatically set to ±1 hour around the span
+**Status**: ⚠️ **TODO** - Configuration in place but UI button not visible
 
 **Configuration** (`datasources.yml`):
 ```yaml
@@ -297,6 +294,19 @@ The observability stack provides **bidirectional correlation** between traces an
       spanEndTimeShift: "1h"
       filterByTraceID: true
 ```
+
+**Current Status**:
+- ✅ Configuration is properly set in Grafana datasource
+- ❌ "Logs for this span" button not visible in Jaeger UI or Grafana Explore
+- 🔧 May require newer Grafana/Jaeger versions or additional configuration
+
+**Workaround**:
+To view logs for a specific trace manually:
+1. Copy the `trace_id` from Jaeger (e.g., `01795c1939818795b87696d6abe2a539`)
+2. Go to Grafana Explore → Loki datasource
+3. Query: `{job="soc-agent", trace_id="<paste-trace-id-here>"}`
+
+**Note**: The forward correlation (Logs → Traces) is the primary workflow for DevOps troubleshooting and is fully functional.
 
 ## 🧪 Testing the Stack
 
