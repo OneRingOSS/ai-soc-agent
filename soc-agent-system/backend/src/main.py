@@ -17,6 +17,7 @@ from agents.coordinator import create_coordinator
 from logger import setup_json_logging, get_logger
 from telemetry import init_telemetry, instrument_fastapi
 from metrics import create_instrumentator, soc_active_websocket_connections
+from health import check_liveness, check_readiness, set_coordinator
 
 # Configure structured JSON logging
 setup_json_logging("INFO")
@@ -46,6 +47,11 @@ async def lifespan(app: FastAPI):
     # Initialize OpenTelemetry
     logger.info("   Initializing OpenTelemetry...")
     init_telemetry()
+
+    # Initialize coordinator for health checks
+    logger.info("   Initializing coordinator for health checks...")
+    coordinator = create_coordinator(use_mock=not settings.openai_api_key)
+    set_coordinator(coordinator)
 
     # Startup: Start background threat generation
     logger.info("   Starting background threat generator...")
@@ -136,15 +142,56 @@ async def broadcast_threat(analysis: ThreatAnalysis):
 
 
 @app.get("/")
-async def health_check():
-    """Health check endpoint."""
+async def root():
+    """Root endpoint - basic service info."""
     return {
-        "status": "healthy",
         "service": "SOC Agent System",
+        "version": "2.0",
+        "status": "running",
         "timestamp": datetime.utcnow().isoformat(),
-        "threats_stored": len(threat_store),
-        "websocket_clients": len(websocket_clients)
+        "endpoints": {
+            "health": "/health",
+            "ready": "/ready",
+            "metrics": "/metrics",
+            "api": "/api/threats"
+        }
     }
+
+
+@app.get("/health")
+async def health():
+    """
+    Liveness probe endpoint for Kubernetes.
+
+    Returns 200 if the process is running. This is a fast check (<5ms)
+    that doesn't verify component initialization.
+
+    Used for: Kubernetes liveness probe
+    """
+    return check_liveness()
+
+
+@app.get("/ready")
+async def ready():
+    """
+    Readiness probe endpoint for Kubernetes.
+
+    Returns 200 only when all components are initialized and ready to accept traffic.
+    Checks: coordinator, all 5 agents, all 3 analyzers.
+
+    Returns 503 during startup or if any component is not ready.
+
+    Used for: Kubernetes readiness probe
+    """
+    response, status_code = check_readiness()
+    if status_code != 200:
+        from fastapi import Response
+        return Response(
+            content=json.dumps(response),
+            status_code=status_code,
+            media_type="application/json"
+        )
+    return response
 
 
 @app.get("/api/threats", response_model=List[ThreatAnalysis])

@@ -8,14 +8,16 @@ from models import ThreatAnalysis, ThreatType
 
 
 def test_health_check(test_client):
-    """Test health check endpoint."""
+    """Test root endpoint."""
     response = test_client.get("/")
-    
+
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "healthy"
-    assert "service" in data
+    assert data["status"] == "running"
+    assert data["service"] == "SOC Agent System"
+    assert data["version"] == "2.0"
     assert "timestamp" in data
+    assert "endpoints" in data
 
 
 def test_get_threats_empty(test_client):

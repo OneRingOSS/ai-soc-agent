@@ -150,7 +150,7 @@ async def test_health_endpoint_tracing(mock_otel_exporter: InMemorySpanExporter)
     ) as client:
         response = await client.get("/")
         assert response.status_code == 200
-        assert response.json()["status"] == "healthy"
+        assert response.json()["status"] == "running"
     
     # Wait for spans to be processed
     await asyncio.sleep(0.1)
