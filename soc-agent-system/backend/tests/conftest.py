@@ -138,11 +138,18 @@ def clear_threat_store():
 @pytest.fixture
 def mock_otel_exporter():
     """Create an in-memory OpenTelemetry exporter for testing."""
+    # Get the existing global tracer provider
+    # The app should have already initialized it when main.py was imported
+    provider = trace.get_tracer_provider()
+
+    # Check if we have a real TracerProvider (not a ProxyTracerProvider)
+    if not hasattr(provider, 'add_span_processor'):
+        # If we got a ProxyTracerProvider, initialize telemetry now
+        from telemetry import init_telemetry
+        provider = init_telemetry()
+
     # Create in-memory exporter
     exporter = InMemorySpanExporter()
-
-    # Get the existing global tracer provider (created by the app)
-    provider = trace.get_tracer_provider()
 
     # Add our in-memory exporter as a span processor to the existing provider
     processor = SimpleSpanProcessor(exporter)
