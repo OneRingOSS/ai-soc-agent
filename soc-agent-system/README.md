@@ -195,6 +195,22 @@ PYTHONPATH=src pytest tests/ --cov=src --cov-report=html
 
 ---
 
+## 🔥 Load Testing & Demo
+
+For production-grade load testing and interview demonstrations:
+
+```bash
+# Run automated verification (14 checks)
+./loadtests/verify_loadtest.sh
+
+# Run interactive demo with observability
+./demo/run_demo.sh
+```
+
+See **[Load Testing Suite](./loadtests/README.md)** for detailed usage, scenarios, and distributed testing options.
+
+---
+
 ## 📁 Project Structure
 
 ```
