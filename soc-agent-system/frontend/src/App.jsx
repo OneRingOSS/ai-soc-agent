@@ -17,7 +17,9 @@ function App() {
   const [filter, setFilter] = useState('all') // 'all' or 'review'
 
   // WebSocket connection for real-time updates
-  const { connected, lastMessage } = useWebSocket('ws://localhost:8000/ws')
+  // Use dynamic WebSocket URL based on current host (works with K8s ingress)
+  const wsUrl = `ws://${window.location.host}/ws`
+  const { connected, lastMessage } = useWebSocket(wsUrl)
 
   // Fetch initial data
   useEffect(() => {
