@@ -207,11 +207,15 @@ async def get_threat(threat_id: str):
 @app.get("/api/analytics", response_model=DashboardMetrics)
 async def get_analytics():
     """Get dashboard analytics metrics."""
+    # Get total count of all threats ever generated
+    total_count = await threat_store.get_total_count()
+
+    # Get stored threats for analytics (latest 100)
     threats = await threat_store.get_threats(limit=settings.max_stored_threats)
 
     if not threats:
         return DashboardMetrics(
-            total_threats=0,
+            total_threats=total_count,  # Use total count, not stored count
             customers_affected=0,
             average_processing_time_ms=0,
             threats_requiring_review=0,
@@ -219,7 +223,7 @@ async def get_analytics():
             threats_by_severity={}
         )
 
-    # Calculate metrics
+    # Calculate metrics from stored threats
     customers = set(t.signal.customer_name for t in threats)
     avg_time = sum(t.total_processing_time_ms for t in threats) // len(threats)
     review_count = sum(1 for t in threats if t.requires_human_review)
@@ -237,7 +241,7 @@ async def get_analytics():
         by_severity[sev] = by_severity.get(sev, 0) + 1
 
     return DashboardMetrics(
-        total_threats=len(threats),
+        total_threats=total_count,  # Total ever generated, not just stored
         customers_affected=len(customers),
         average_processing_time_ms=avg_time,
         threats_requiring_review=review_count,
