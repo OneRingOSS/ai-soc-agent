@@ -245,7 +245,7 @@ cat > /tmp/soc-k8s-dashboard.json << 'DASHBOARD_EOF'
       "targets": [
         {
           "datasource": {"type": "loki", "uid": "loki"},
-          "expr": "{namespace=\\\"soc-agent-test\\\"}",
+          "expr": "{namespace=\"soc-agent-test\"}",
           "refId": "A"
         }
       ]
@@ -256,7 +256,12 @@ cat > /tmp/soc-k8s-dashboard.json << 'DASHBOARD_EOF'
   "title": "SOC Agent System - K8s",
   "uid": "soc-agent-k8s",
   "version": 1,
-  "refresh": "30s"
+  "refresh": "30s",
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {}
 }
 DASHBOARD_EOF
 
