@@ -1,0 +1,99 @@
+# Default values for soc-agent.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# -- Redis configuration for shared state across backend pods
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: 7-alpine
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 6379
+  persistence:
+    enabled: false  # For local Kind; use true for production
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# -- Backend FastAPI application
+backend:
+  replicaCount: 2
+  image:
+    repository: soc-backend
+    tag: latest
+    pullPolicy: Never  # For Kind (no registry); use Always for production
+  service:
+    type: ClusterIP
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  # -- Environment variables for backend pods
+  # NOTE: REDIS_URL is constructed dynamically in the configmap template
+  env:
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+    OTEL_SERVICE_NAME: "soc-agent-system"
+    LOG_LEVEL: "INFO"
+  probes:
+    liveness:
+      path: /health
+      initialDelaySeconds: 10
+      periodSeconds: 30
+    readiness:
+      path: /ready
+      initialDelaySeconds: 5
+      periodSeconds: 10
+
+# -- Frontend React + nginx application
+frontend:
+  replicaCount: 1
+  image:
+    repository: soc-frontend
+    tag: latest
+    pullPolicy: Never  # For Kind (no registry); use Always for production
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# -- Ingress configuration for routing external traffic
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - host: localhost
+      paths:
+        - path: /
+          pathType: Prefix
+          backend: frontend
+        - path: /api
+          pathType: Prefix
+          backend: backend
+        - path: /ws
+          pathType: Prefix
+          backend: backend
+  tls: []
+
