@@ -15,7 +15,7 @@ echo "Grafana is ready!"
 
 # Add Loki datasource
 echo "Adding Loki datasource..."
-curl -s -X POST http://admin:admin1234@localhost:3000/api/datasources \
+curl -s -X POST http://admin:admin@localhost:3000/api/datasources \
   -H "Content-Type: application/json" \
   -d '{
     "name": "Loki",
@@ -245,7 +245,7 @@ cat > /tmp/soc-k8s-dashboard.json << 'DASHBOARD_EOF'
       "targets": [
         {
           "datasource": {"type": "loki", "uid": "loki"},
-          "expr": "{namespace=\"soc-agent-test\"}",
+          "expr": "{namespace=\"soc-agent-demo\"}",
           "refId": "A"
         }
       ]
@@ -268,7 +268,7 @@ DASHBOARD_EOF
 echo "Importing dashboard to Grafana..."
 RESPONSE=$(curl -s -X POST \
   -H "Content-Type: application/json" \
-  -u admin:admin1234 \
+  -u admin:admin \
   http://localhost:3000/api/dashboards/db \
   -d "{\"dashboard\": $(cat /tmp/soc-k8s-dashboard.json), \"overwrite\": true}")
 
