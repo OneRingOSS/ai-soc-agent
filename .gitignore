@@ -152,3 +152,7 @@ soc-agent-system/loadtests/reports/
 soc-agent-system/loadtests/*.html
 soc-agent-system/loadtests/*.csv
 
+# K8s Demo Load Test Artifacts
+soc-agent-system/k8s/demo/k8s-demo-*.html
+soc-agent-system/k8s/demo/k8s-demo-*.csv
+
