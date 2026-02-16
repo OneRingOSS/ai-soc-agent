@@ -174,6 +174,7 @@ helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
     --set redis.enabled=true \
     --set ingress.enabled=true \
     --set ingress.host=soc-agent.local \
+    --set observability.enabled=true \
     --wait --timeout=300s
 
 log_success "SOC Agent deployed"
