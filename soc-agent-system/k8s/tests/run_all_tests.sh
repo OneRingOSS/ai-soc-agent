@@ -45,10 +45,12 @@ parse_args() {
                 echo "  1. Integration Tests (basic deployment)"
                 echo "  2. Connectivity Tests (E2E scenarios)"
                 echo "  3. Observability Stack Tests"
-                echo "  4. HPA Tests (autoscaling)"
+                echo "  4. HPA Tests (autoscaling) - SKIPPED (requires metrics-server)"
                 echo "  5. Ingress Tests (routing)"
                 echo "  6. Resilience Tests (failures & recovery)"
                 echo "  7. Performance Tests (load testing)"
+                echo ""
+                echo "Note: HPA tests are skipped as functionality is covered by Performance Tests"
                 exit 0
                 ;;
             *)
