@@ -1,0 +1,58 @@
+
+=== SOC Agent System Deployed Successfully! ===
+
+Thank you for installing {{ include "soc-agent.fullname" . }}.
+
+1. Access the SOC Dashboard:
+
+   For Kind (local development):
+     SOC Dashboard: http://localhost:8080
+
+   Port-forward the backend directly:
+     kubectl port-forward svc/{{ include "soc-agent.fullname" . }}-backend 8000:8000
+
+2. Check pod status:
+
+   Backend pods:
+     kubectl get pods -l app=soc-backend
+
+   Redis pods:
+     kubectl get pods -l app=redis
+
+   Frontend pods:
+     kubectl get pods -l app=soc-frontend
+
+3. View backend logs:
+
+     kubectl logs -l app=soc-backend --tail=50
+
+{{- if .Values.backend.hpa.enabled }}
+
+4. Check HPA status:
+
+     kubectl get hpa
+
+{{- end }}
+
+{{- if .Values.redis.enabled }}
+
+5. Verify Redis connection:
+
+     kubectl exec -it $(kubectl get pods -l app=soc-backend -o jsonpath='{.items[0].metadata.name}') -- env | grep REDIS_URL
+
+{{- end }}
+
+6. Useful commands:
+
+   Health check:
+     curl http://localhost:8080/health
+
+   List threats:
+     curl http://localhost:8080/api/threats
+
+   Watch HPA scaling:
+     kubectl get hpa -w
+
+   Teardown:
+     ./teardown.sh
+
