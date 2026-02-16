@@ -1,0 +1,19 @@
+{{- if .Values.redis.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "soc-agent.fullname" . }}-redis
+  labels:
+    {{- include "soc-agent.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.redis.service.type }}
+  ports:
+    - port: {{ .Values.redis.service.port }}
+      targetPort: 6379
+      protocol: TCP
+      name: redis
+  selector:
+    app: redis
+    release: {{ .Release.Name }}
+{{- end }}
+
