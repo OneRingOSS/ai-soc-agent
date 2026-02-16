@@ -13,6 +13,25 @@ done
 
 echo "Grafana is ready!"
 
+# Add Loki datasource
+echo "Adding Loki datasource..."
+curl -s -X POST http://admin:admin1234@localhost:3000/api/datasources \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Loki",
+    "type": "loki",
+    "uid": "loki",
+    "access": "proxy",
+    "url": "http://loki.observability.svc.cluster.local:3100",
+    "basicAuth": false,
+    "isDefault": false,
+    "jsonData": {
+      "maxLines": 1000
+    }
+  }' > /dev/null 2>&1 || echo "Loki datasource may already exist"
+
+echo "Loki datasource configured!"
+
 # Get the existing dashboard
 DASHBOARD_FILE="../../observability/grafana/dashboards/soc-dashboard.json"
 
@@ -205,6 +224,31 @@ cat > /tmp/soc-k8s-dashboard.json << 'DASHBOARD_EOF'
           "refId": "A"
         }
       ]
+    },
+    {
+      "title": "Recent Logs",
+      "description": "Live log stream from SOC Agent backend pods",
+      "type": "logs",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 24},
+      "id": 5,
+      "datasource": {"type": "loki", "uid": "loki"},
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "datasource": {"type": "loki", "uid": "loki"},
+          "expr": "{namespace=\\\"soc-agent-test\\\"}",
+          "refId": "A"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
@@ -212,7 +256,7 @@ cat > /tmp/soc-k8s-dashboard.json << 'DASHBOARD_EOF'
   "title": "SOC Agent System - K8s",
   "uid": "soc-agent-k8s",
   "version": 1,
-  "refresh": "10s"
+  "refresh": "30s"
 }
 DASHBOARD_EOF
 

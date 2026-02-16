@@ -47,7 +47,7 @@ backend:
   # -- Environment variables for backend pods
   # NOTE: REDIS_URL is constructed dynamically in the configmap template
   env:
-    OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+    OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger.observability.svc.cluster.local:4317"
     OTEL_SERVICE_NAME: "soc-agent-system"
     LOG_LEVEL: "INFO"
   probes:
