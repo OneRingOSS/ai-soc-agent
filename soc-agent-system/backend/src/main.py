@@ -43,7 +43,11 @@ async def lifespan(app: FastAPI):
     global threat_store
 
     logger.info("🚀 SOC Agent System starting up...")
-    logger.info(f"   Mode: {'MOCK (no OpenAI API)' if not settings.openai_api_key else 'LIVE (OpenAI API enabled)'}")
+    use_mock = settings.should_use_mock()
+    if settings.force_mock_mode.lower() in ("1", "true"):
+        logger.info(f"   Mode: MOCK (forced via FORCE_MOCK_MODE)")
+    else:
+        logger.info(f"   Mode: {'MOCK (no OpenAI API)' if use_mock else 'LIVE (OpenAI API enabled)'}")
     logger.info(f"   Host: {settings.host}:{settings.port}")
     logger.info(f"   CORS Origins: {settings.cors_origins}")
 
@@ -58,7 +62,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize coordinator for health checks
     logger.info("   Initializing coordinator for health checks...")
-    coordinator = create_coordinator(use_mock=not settings.openai_api_key)
+    coordinator = create_coordinator(use_mock=settings.should_use_mock())
     set_coordinator(coordinator)
 
     # Startup: Start background threat generation
@@ -109,7 +113,7 @@ instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schem
 
 async def background_threat_generator():
     """Generate threats periodically in the background."""
-    coordinator = create_coordinator(use_mock=not settings.openai_api_key)
+    coordinator = create_coordinator(use_mock=settings.should_use_mock())
 
     while True:
         try:
@@ -245,7 +249,7 @@ async def get_analytics():
 @app.post("/api/threats/trigger", response_model=ThreatAnalysis)
 async def trigger_threat(request: TriggerRequest):
     """Manually trigger a threat for demo purposes."""
-    coordinator = create_coordinator(use_mock=not settings.openai_api_key)
+    coordinator = create_coordinator(use_mock=settings.should_use_mock())
 
     # Generate signal based on request
     if request.scenario:

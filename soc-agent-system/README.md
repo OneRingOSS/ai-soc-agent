@@ -204,17 +204,40 @@ cp .env.example .env
 # Run tests
 PYTHONPATH=src pytest tests/ -v
 
-# Start backend server
-cd src
-PYTHONPATH=. uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# Start backend server (RECOMMENDED: use run_with_logging.sh)
+./run_with_logging.sh              # MOCK mode (default, fast, no API costs)
+# OR for live API mode:
+# LIVE_API=1 ./run_with_logging.sh  # LIVE mode (uses OpenAI API)
 
-# To stop the backend (if running in background):
-# lsof -ti:8000 | xargs kill
+# Alternative: Start manually
+# cd src
+# FORCE_MOCK_MODE=1 python main.py  # MOCK mode
+# python main.py                     # LIVE mode (if OPENAI_API_KEY in .env)
 ```
 
 > **⚠️ Troubleshooting**: If you get a `pydantic-core` build error, you're likely using Python 3.13+. Delete the `venv` folder and recreate it with Python 3.9-3.12.
 
 Backend will be available at: **http://localhost:8000**
+
+**Mock vs Live API Mode:**
+
+The backend supports two modes:
+- **MOCK mode** (default): Uses mock responses, instant (< 100ms), no API costs
+- **LIVE mode**: Uses real OpenAI API, slower (8-15s per threat), incurs API costs
+
+**Control the mode:**
+```bash
+# Method 1: Using run_with_logging.sh (RECOMMENDED)
+./run_with_logging.sh              # MOCK mode (default)
+LIVE_API=1 ./run_with_logging.sh   # LIVE mode
+
+# Method 2: Using FORCE_MOCK_MODE environment variable
+FORCE_MOCK_MODE=1 python src/main.py  # Force MOCK mode (even if API key exists)
+python src/main.py                     # Use LIVE mode if OPENAI_API_KEY in .env
+
+# Method 3: Comment out OPENAI_API_KEY in .env file
+# Edit backend/.env and comment out the OPENAI_API_KEY line
+```
 
 **Useful Commands:**
 ```bash
