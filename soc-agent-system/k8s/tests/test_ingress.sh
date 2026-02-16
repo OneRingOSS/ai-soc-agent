@@ -131,8 +131,9 @@ test_ingress_configured() {
 test_frontend_routing() {
     log_info "Testing frontend routing (/)..."
 
-    # For Kind, we need to get the NodePort
-    INGRESS_PORT=$(kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+    # For Kind, use the port mapping from kind-config.yaml (80→8080)
+    # The ingress controller is exposed via the control-plane node's port mapping
+    INGRESS_PORT=8080
 
     if curl -s -H "Host: $INGRESS_HOST" "http://localhost:${INGRESS_PORT}/" | grep -q "<!doctype html>"; then
         log_success "Frontend accessible via Ingress"
@@ -146,14 +147,14 @@ test_frontend_routing() {
 test_backend_api_routing() {
     log_info "Testing backend API routing (/api/*)..."
 
-    # For Kind, we need to get the NodePort
-    INGRESS_PORT=$(kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+    # For Kind, use the port mapping from kind-config.yaml (80→8080)
+    INGRESS_PORT=8080
 
-    # Test /api/health
-    if curl -s -H "Host: $INGRESS_HOST" "http://localhost:${INGRESS_PORT}/api/health" | grep -q "healthy"; then
-        log_success "Backend /api/health accessible via Ingress"
+    # Test /health (backend health endpoint)
+    if curl -s -H "Host: $INGRESS_HOST" "http://localhost:${INGRESS_PORT}/health" | grep -q "healthy"; then
+        log_success "Backend /health accessible via Ingress"
     else
-        log_error "Backend /api/health not accessible via Ingress"
+        log_error "Backend /health not accessible via Ingress"
         return 1
     fi
 

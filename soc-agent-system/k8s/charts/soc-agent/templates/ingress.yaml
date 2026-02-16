@@ -40,6 +40,27 @@ spec:
                 name: {{ include "soc-agent.fullname" $ }}-backend
                 port:
                   number: 8000
+          - path: /metrics
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "soc-agent.fullname" $ }}-backend
+                port:
+                  number: 8000
+          - path: /health
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "soc-agent.fullname" $ }}-backend
+                port:
+                  number: 8000
+          - path: /ready
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "soc-agent.fullname" $ }}-backend
+                port:
+                  number: 8000
           - path: /
             pathType: Prefix
             backend:

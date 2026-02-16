@@ -1,7 +1,7 @@
 # Kubernetes Test Suite Validation Summary
 
-**Date**: 2026-02-15  
-**Cluster**: Kind (soc-agent-cluster, 3 nodes)  
+**Date**: 2026-02-16
+**Cluster**: Kind (soc-agent-cluster, 3 nodes)
 **Kubernetes Version**: v1.35.0
 
 ---
@@ -112,42 +112,55 @@ cd soc-agent-system/k8s/tests && ./test_hpa.sh --cleanup
 
 ---
 
-## 5. Test Suite: test_ingress.sh
+## 5. test_ingress.sh - ✅ PASSED (5/5 tests)
 
-**Status**: ⚠️ PARTIALLY FIXED
+**Status**: All tests passed, cleanup successful
 
-**Tests Run**: Ingress controller installed, routing tests failing
+**Tests Executed**:
+- ✅ Nginx ingress controller installation
+- ✅ SOC Agent deployment with ingress enabled
+- ✅ Frontend routing (/) via ingress
+- ✅ Backend /health endpoint via ingress
+- ✅ Backend /api/threats endpoint via ingress
 
-**Issues Found**:
-1. **Port issue**: Test tried to access `http://localhost/` but Kind uses NodePort
-2. **Helm chart configuration**: Ingress only configured for `/api` path, not `/` for frontend
+**Issues Found & Fixed**:
 
-**Fixes Applied**:
-- Lines 135-136: Added NodePort discovery for Kind cluster:
-  ```bash
-  INGRESS_PORT=$(kubectl get service -n ingress-nginx ingress-nginx-controller \
-      -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
-  ```
-- Line 138: Changed curl to use NodePort: `http://localhost:${INGRESS_PORT}/`
-- Lines 150-152: Applied same fix to backend API routing test
+1. **Ingress Controller Not Using hostPort**: The nginx ingress controller was deployed as a Deployment without the Kind-specific configuration
+   - **Root Cause**: Ingress controller wasn't using `hostPort` bindings required for Kind port mappings
+   - **Fix**: Reinstalled ingress controller with Kind-specific manifest and added nodeSelector to force scheduling on control-plane node
+   - **Commands**:
+     ```bash
+     kubectl delete -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+     kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/kind/deploy.yaml
+     kubectl patch deployment -n ingress-nginx ingress-nginx-controller --type=json \
+       -p='[{"op": "add", "path": "/spec/template/spec/nodeSelector/ingress-ready", "value": "true"}]'
+     ```
 
-**Known Limitations**:
-- Helm chart only configures ingress for `/api` path, not `/` for frontend
-- This is a Helm chart configuration issue, not a test script issue
-- Ingress configuration found:
-  ```yaml
-  rules:
-  - host: soc-agent.local
-    http:
-      paths:
-      - backend:
-          service:
-            name: soc-agent-test-backend
-            port:
-              number: 8000
-        path: /api
-        pathType: Prefix
-  ```
+2. **Port Access Method**: Test was trying to use NodePort which doesn't work in Kind without port mappings
+   - **Root Cause**: Kind requires using the port mapping (80→8080) configured in kind-config.yaml
+   - **Fix**: Changed test to use port 8080 instead of NodePort discovery
+   - **Lines 130-144, 146-168**: Updated both `test_frontend_routing()` and `test_backend_api_routing()` to use `INGRESS_PORT=8080`
+
+3. **Backend Health Endpoint Path**: Test was checking `/api/health` but the actual endpoint is `/health`
+   - **Root Cause**: Backend health endpoint is at `/health`, not `/api/health`
+   - **Fix**: Updated test to use correct path `/health`
+   - **Line 153**: Changed from `/api/health` to `/health`
+
+4. **Helm Chart Missing Backend Paths**: Ingress configuration was missing `/metrics`, `/health`, `/ready` paths
+   - **Root Cause**: Helm chart only had `/api` and `/ws` paths configured
+   - **Fix**: Added additional backend paths to ingress template
+   - **File**: `soc-agent-system/k8s/charts/soc-agent/templates/ingress.yaml`
+   - **Lines 27-70**: Added `/metrics`, `/health`, `/ready` paths pointing to backend service
+
+**Validation Command**:
+```bash
+cd soc-agent-system/k8s/tests && ./test_ingress.sh --cleanup
+```
+
+**Key Learnings**:
+- Kind requires ingress controller to run on control-plane node with `hostPort` bindings
+- Kind port mappings (80→8080) must be used instead of NodePort for ingress access
+- Ingress controller must have `nodeSelector: {ingress-ready: "true"}` to schedule on control-plane node
 
 ---
 
