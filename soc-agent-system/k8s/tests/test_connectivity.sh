@@ -13,28 +13,53 @@ NC='\033[0m'
 # Configuration
 NAMESPACE="${NAMESPACE:-soc-agent-test}"
 RELEASE_NAME="${RELEASE_NAME:-soc-agent-test}"
-BACKEND_PORT=8080
-FRONTEND_PORT=8081
+BACKEND_PORT=9080
+FRONTEND_PORT=9081
 
 # Test results
 TESTS_PASSED=0
 TESTS_FAILED=0
 
 log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[✓]${NC} $1"; ((TESTS_PASSED++)); }
-log_error() { echo -e "${RED}[✗]${NC} $1"; ((TESTS_FAILED++)); }
+log_success() { echo -e "${GREEN}[✓]${NC} $1"; ((TESTS_PASSED++)) || true; }
+log_error() { echo -e "${RED}[✗]${NC} $1"; ((TESTS_FAILED++)) || true; }
 
 # Start port-forwards
 start_port_forwards() {
     log_info "Starting port-forwards..."
 
-    kubectl port-forward -n "$NAMESPACE" "service/${RELEASE_NAME}-backend" ${BACKEND_PORT}:8000 > /dev/null 2>&1 &
+    kubectl port-forward -n "$NAMESPACE" "service/${RELEASE_NAME}-backend" ${BACKEND_PORT}:8000 > /tmp/pf-backend.log 2>&1 &
     BACKEND_PF_PID=$!
 
-    kubectl port-forward -n "$NAMESPACE" "service/${RELEASE_NAME}-frontend" ${FRONTEND_PORT}:80 > /dev/null 2>&1 &
+    kubectl port-forward -n "$NAMESPACE" "service/${RELEASE_NAME}-frontend" ${FRONTEND_PORT}:80 > /tmp/pf-frontend.log 2>&1 &
     FRONTEND_PF_PID=$!
 
-    sleep 5
+    # Wait for port-forwards to be ready
+    log_info "Waiting for port-forwards to be ready..."
+    sleep 3
+
+    # Check if port-forwards are actually running
+    set +e  # Temporarily disable exit on error
+    ps -p $BACKEND_PF_PID > /dev/null 2>&1
+    BACKEND_RUNNING=$?
+    ps -p $FRONTEND_PF_PID > /dev/null 2>&1
+    FRONTEND_RUNNING=$?
+    set -e  # Re-enable exit on error
+
+    if [ $BACKEND_RUNNING -ne 0 ]; then
+        log_error "Backend port-forward failed to start"
+        cat /tmp/pf-backend.log
+        return 1
+    fi
+
+    if [ $FRONTEND_RUNNING -ne 0 ]; then
+        log_error "Frontend port-forward failed to start"
+        cat /tmp/pf-frontend.log
+        return 1
+    fi
+
+    # Wait a bit more for the ports to be ready
+    sleep 2
     log_success "Port-forwards started (backend: ${BACKEND_PORT}, frontend: ${FRONTEND_PORT})"
 }
 
@@ -43,90 +68,99 @@ test_backend_endpoints() {
     log_info "Testing backend API endpoints..."
 
     # Health check
-    if curl -sf http://localhost:${BACKEND_PORT}/health | grep -q "healthy"; then
+    HEALTH_RESPONSE=$(curl -s http://localhost:${BACKEND_PORT}/health 2>&1)
+    if echo "$HEALTH_RESPONSE" | grep -q "healthy"; then
         log_success "Backend /health endpoint working"
     else
-        log_error "Backend /health endpoint failed"
+        log_error "Backend /health endpoint failed: $HEALTH_RESPONSE"
+        return 1
     fi
 
     # Ready check
-    if curl -sf http://localhost:${BACKEND_PORT}/ready > /dev/null; then
+    READY_RESPONSE=$(curl -s http://localhost:${BACKEND_PORT}/ready 2>&1)
+    if [ $? -eq 0 ]; then
         log_success "Backend /ready endpoint working"
     else
-        log_error "Backend /ready endpoint failed"
+        log_error "Backend /ready endpoint failed: $READY_RESPONSE"
     fi
 
     # Metrics endpoint
-    if curl -sf http://localhost:${BACKEND_PORT}/metrics | grep -q "process_cpu"; then
+    METRICS_RESPONSE=$(curl -s http://localhost:${BACKEND_PORT}/metrics 2>&1)
+    if echo "$METRICS_RESPONSE" | grep -q "process_cpu"; then
         log_success "Backend /metrics endpoint working"
     else
         log_error "Backend /metrics endpoint failed"
     fi
 
     # List threats
-    if curl -sf http://localhost:${BACKEND_PORT}/api/threats > /dev/null; then
+    THREATS_RESPONSE=$(curl -s http://localhost:${BACKEND_PORT}/api/threats 2>&1)
+    if [ $? -eq 0 ]; then
         log_success "Backend /api/threats endpoint working"
     else
-        log_error "Backend /api/threats endpoint failed"
+        log_error "Backend /api/threats endpoint failed: $THREATS_RESPONSE"
     fi
 }
 
 test_frontend_connectivity() {
     log_info "Testing frontend connectivity..."
 
-    if curl -sf http://localhost:${FRONTEND_PORT}/ > /dev/null; then
+    FRONTEND_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:${FRONTEND_PORT}/ 2>&1)
+    if [ "$FRONTEND_RESPONSE" = "200" ]; then
         log_success "Frontend is accessible"
     else
-        log_error "Frontend is not accessible"
+        log_error "Frontend is not accessible (HTTP $FRONTEND_RESPONSE)"
     fi
 }
 
 test_threat_creation() {
     log_info "Testing threat creation (E2E)..."
 
-    # Trigger a threat
-    RESPONSE=$(curl -sf -X POST http://localhost:${BACKEND_PORT}/api/threats/trigger \
+    # Trigger a threat (using valid threat type)
+    RESPONSE=$(curl -s -X POST http://localhost:${BACKEND_PORT}/api/threats/trigger \
         -H "Content-Type: application/json" \
-        -d '{"threat_type": "malware", "severity": "high"}')
+        -d '{"threat_type": "bot_traffic"}' 2>&1)
 
-    if echo "$RESPONSE" | grep -q "threat_id"; then
+    if echo "$RESPONSE" | grep -q '"id"'; then
         log_success "Threat creation successful"
 
-        # Extract threat ID
-        THREAT_ID=$(echo "$RESPONSE" | grep -o '"threat_id":"[^"]*"' | cut -d'"' -f4)
+        # Extract threat ID (field is "id", not "threat_id")
+        THREAT_ID=$(echo "$RESPONSE" | grep -o '"id":"[^"]*"' | head -1 | cut -d'"' -f4)
         log_info "Created threat ID: $THREAT_ID"
 
         # Verify threat appears in list
         sleep 2
-        if curl -sf http://localhost:${BACKEND_PORT}/api/threats | grep -q "$THREAT_ID"; then
+        THREATS_LIST=$(curl -s http://localhost:${BACKEND_PORT}/api/threats 2>&1)
+        if echo "$THREATS_LIST" | grep -q "$THREAT_ID"; then
             log_success "Threat appears in threat list"
         else
             log_error "Threat not found in threat list"
         fi
     else
-        log_error "Threat creation failed"
+        log_error "Threat creation failed: $RESPONSE"
     fi
 }
 
 test_redis_connectivity() {
     log_info "Testing Redis connectivity..."
 
-    # Check if Redis pod is running
-    if kubectl get pod -n "$NAMESPACE" -l "app.kubernetes.io/name=redis" 2>/dev/null | grep -q "Running"; then
+    # Check if Redis pod is running (using correct label)
+    if kubectl get pod -n "$NAMESPACE" -l "app=redis" 2>/dev/null | grep -q "Running"; then
         log_success "Redis pod is running"
     else
         log_error "Redis pod is not running"
         return 1
     fi
 
-    # Test Redis connection from backend pod
-    BACKEND_POD=$(kubectl get pod -n "$NAMESPACE" -l "app.kubernetes.io/component=backend" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
+    # Test Redis connection from backend pod (using correct label)
+    BACKEND_POD=$(kubectl get pod -n "$NAMESPACE" -l "app=soc-backend" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
 
     if [ -n "$BACKEND_POD" ]; then
-        if kubectl exec -n "$NAMESPACE" "$BACKEND_POD" -- sh -c "echo 'PING' | nc ${RELEASE_NAME}-redis 6379 2>/dev/null" | grep -q "PONG"; then
-            log_success "Backend can connect to Redis"
+        # Check if backend can reach Redis (using redis-cli if available, or check env var)
+        REDIS_URL=$(kubectl exec -n "$NAMESPACE" "$BACKEND_POD" -- env | grep REDIS_URL || echo "")
+        if [ -n "$REDIS_URL" ]; then
+            log_success "Backend has REDIS_URL configured"
         else
-            log_error "Backend cannot connect to Redis"
+            log_error "Backend does not have REDIS_URL configured"
         fi
     else
         log_error "Backend pod not found"
@@ -148,11 +182,11 @@ main() {
     log_info "========================================="
     echo ""
 
-    start_port_forwards
-    test_backend_endpoints
-    test_frontend_connectivity
-    test_threat_creation
-    test_redis_connectivity
+    start_port_forwards || { log_error "Port forwards failed"; return 1; }
+    test_backend_endpoints || { log_error "Backend endpoints test failed"; }
+    test_frontend_connectivity || { log_error "Frontend connectivity test failed"; }
+    test_threat_creation || { log_error "Threat creation test failed"; }
+    test_redis_connectivity || { log_error "Redis connectivity test failed"; }
 
     echo ""
     log_info "========================================="

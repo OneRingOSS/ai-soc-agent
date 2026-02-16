@@ -25,8 +25,11 @@ FROM nginx:alpine
 # Copy built assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy nginx configuration
+# Copy nginx configuration template and entrypoint script
+COPY nginx.conf.template /etc/nginx/conf.d/nginx.conf.template
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 
 # Expose HTTP port
 EXPOSE 80
@@ -35,6 +38,6 @@ EXPOSE 80
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
 
-# nginx runs in foreground by default
-CMD ["nginx", "-g", "daemon off;"]
+# Use custom entrypoint to substitute environment variables
+ENTRYPOINT ["/docker-entrypoint.sh"]
 
