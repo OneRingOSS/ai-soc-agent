@@ -188,7 +188,7 @@ test_rolling_update() {
 
     # Trigger rolling update by changing an annotation
     log_info "Triggering rolling update..."
-    kubectl patch deployment -n "$NAMESPACE" -l app=soc-backend \
+    kubectl patch deployment -n "$NAMESPACE" "${RELEASE_NAME}-backend" \
         -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"test-update\":\"$(date +%s)\"}}}}}"
 
     # Wait for health checks to complete

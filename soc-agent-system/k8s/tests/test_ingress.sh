@@ -130,8 +130,11 @@ test_ingress_configured() {
 # Test: Frontend routing (/)
 test_frontend_routing() {
     log_info "Testing frontend routing (/)..."
-    
-    if curl -s -H "Host: $INGRESS_HOST" http://localhost/ | grep -q "<!doctype html>"; then
+
+    # For Kind, we need to get the NodePort
+    INGRESS_PORT=$(kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+
+    if curl -s -H "Host: $INGRESS_HOST" "http://localhost:${INGRESS_PORT}/" | grep -q "<!doctype html>"; then
         log_success "Frontend accessible via Ingress"
     else
         log_error "Frontend not accessible via Ingress"
@@ -142,17 +145,20 @@ test_frontend_routing() {
 # Test: Backend API routing (/api/*)
 test_backend_api_routing() {
     log_info "Testing backend API routing (/api/*)..."
-    
+
+    # For Kind, we need to get the NodePort
+    INGRESS_PORT=$(kubectl get service -n ingress-nginx ingress-nginx-controller -o jsonpath='{.spec.ports[?(@.name=="http")].nodePort}')
+
     # Test /api/health
-    if curl -s -H "Host: $INGRESS_HOST" http://localhost/api/health | grep -q "healthy"; then
+    if curl -s -H "Host: $INGRESS_HOST" "http://localhost:${INGRESS_PORT}/api/health" | grep -q "healthy"; then
         log_success "Backend /api/health accessible via Ingress"
     else
         log_error "Backend /api/health not accessible via Ingress"
         return 1
     fi
-    
+
     # Test /api/threats
-    if curl -s -H "Host: $INGRESS_HOST" http://localhost/api/threats | grep -q "\["; then
+    if curl -s -H "Host: $INGRESS_HOST" "http://localhost:${INGRESS_PORT}/api/threats" | grep -q "\["; then
         log_success "Backend /api/threats accessible via Ingress"
     else
         log_error "Backend /api/threats not accessible via Ingress"

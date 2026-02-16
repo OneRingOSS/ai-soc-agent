@@ -109,9 +109,9 @@ test_hpa_configured() {
 # Test: Check initial replica count
 test_initial_replicas() {
     log_info "Checking initial replica count..."
-    
-    REPLICAS=$(kubectl get deployment -n "$NAMESPACE" -l app=soc-backend -o jsonpath='{.items[0].status.replicas}')
-    
+
+    REPLICAS=$(kubectl get deployment -n "$NAMESPACE" "${RELEASE_NAME}-backend" -o jsonpath='{.status.replicas}')
+
     if [ "$REPLICAS" -ge 2 ]; then
         log_success "Initial replicas: $REPLICAS (minimum 2)"
     else
@@ -143,13 +143,13 @@ test_scale_up() {
     
     log_info "Waiting for HPA to scale up (60s)..."
     sleep 60
-    
+
     # Check if pods scaled up
-    NEW_REPLICAS=$(kubectl get deployment -n "$NAMESPACE" -l app=soc-backend -o jsonpath='{.items[0].status.replicas}')
-    
+    NEW_REPLICAS=$(kubectl get deployment -n "$NAMESPACE" "${RELEASE_NAME}-backend" -o jsonpath='{.status.replicas}')
+
     # Kill port-forward
     kill $PF_PID 2>/dev/null || true
-    
+
     if [ "$NEW_REPLICAS" -gt 2 ]; then
         log_success "Pods scaled up to $NEW_REPLICAS replicas"
     else
@@ -201,7 +201,7 @@ test_scale_down() {
     log_info "Waiting for scale-down (90s)..."
     sleep 90
 
-    FINAL_REPLICAS=$(kubectl get deployment -n "$NAMESPACE" -l app=soc-backend -o jsonpath='{.items[0].status.replicas}')
+    FINAL_REPLICAS=$(kubectl get deployment -n "$NAMESPACE" "${RELEASE_NAME}-backend" -o jsonpath='{.status.replicas}')
 
     log_info "Final replica count: $FINAL_REPLICAS"
 
