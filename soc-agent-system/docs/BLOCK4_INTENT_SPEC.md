@@ -8,10 +8,13 @@
 
 **Estimated Time:** 3 hours
 
-**Dependencies:** 
+**Dependencies:**
 - Block 1 (Observability instrumentation) — COMPLETED ✅
 - Block 2 (Docker Compose stack) — COMPLETED ✅
-- Dockerfiles must exist: `Dockerfile.backend` and `Dockerfile.frontend`
+- Block 3 (Load Testing) — COMPLETED ✅
+- Redis Integration — COMPLETED ✅
+- Dockerfiles exist: `backend/Dockerfile` and `frontend/Dockerfile` ✅
+- Integration tests validate multi-pod deployment — COMPLETED ✅
 
 **Fallback Strategy:** If this block fails, Docker Compose remains the primary demo. The Helm chart can be shown as code artifacts and discussed architecturally.
 
@@ -29,23 +32,32 @@ multi-environment support via values files.
 
 EXISTING CONTEXT:
 - Backend: Python FastAPI application
-  - Docker image: soc-backend:latest (built from Dockerfile.backend)
+  - Docker image: soc-backend:latest (built from backend/Dockerfile)
   - Exposes port 8000
   - Health endpoints: GET /health (liveness), GET /ready (readiness)
   - Metrics endpoint: GET /metrics (Prometheus format)
   - API endpoints: POST /api/threats/trigger, GET /api/threats, GET /api/threats/{id}
-  - WebSocket: /ws
+  - WebSocket: /ws (uses Redis Pub/Sub for cross-pod broadcasting)
   - Environment variables needed:
+    - REDIS_URL (REQUIRED: redis://redis:6379 - for shared state across pods)
     - OTEL_EXPORTER_OTLP_ENDPOINT (default: http://otel-collector:4317)
     - OTEL_SERVICE_NAME (default: soc-agent-system)
     - LOG_LEVEL (default: INFO)
     - OPENAI_API_KEY (optional, for real LLM calls)
+  - CRITICAL: Requires Redis for multi-pod deployment
+    - All pods share state via Redis (threat storage)
+    - WebSocket broadcasts use Redis Pub/Sub channel "threats:events"
+    - Falls back to in-memory store if Redis unavailable (single pod only)
+  - Validated by integration tests: backend/tests/test_redis_pubsub_integration.py
+    - Tests simulate 3 pods with cross-pod WebSocket broadcasting
+    - All 5 integration tests passing
 
 - Frontend: React + Vite application served by nginx
-  - Docker image: soc-frontend:latest (built from Dockerfile.frontend)
+  - Docker image: soc-frontend:latest (built from frontend/Dockerfile)
   - Exposes port 80
   - Serves static files from /usr/share/nginx/html
   - Needs reverse proxy to backend for /api/* and /ws
+  - nginx.conf included in Docker image for reverse proxy configuration
 
 - Observability Stack (from Block 2):
   - OpenTelemetry Collector (receives traces/metrics from backend)
@@ -63,9 +75,14 @@ PROJECT STRUCTURE:
 soc-agent-system/
 ├── backend/
 │   ├── src/
-│   └── Dockerfile.backend (exists)
+│   │   ├── store.py (Redis + in-memory threat storage abstraction)
+│   │   └── main.py (FastAPI app with Redis integration)
+│   ├── tests/
+│   │   └── test_redis_pubsub_integration.py (validates multi-pod deployment)
+│   └── Dockerfile (exists - multi-stage Python build)
 ├── frontend/
-│   └── Dockerfile.frontend (exists)
+│   ├── nginx.conf (exists - reverse proxy config)
+│   └── Dockerfile (exists - multi-stage Node.js + nginx build)
 ├── observability/
 │   ├── docker-compose.yml (exists from Block 2)
 │   └── configs/ (OTel, Prometheus, Grafana configs exist)
@@ -85,6 +102,8 @@ soc-agent-system/
                 ├── backend-service.yaml
                 ├── backend-hpa.yaml
                 ├── backend-configmap.yaml
+                ├── redis-deployment.yaml (NEW - REQUIRED)
+                ├── redis-service.yaml (NEW - REQUIRED)
                 ├── frontend-deployment.yaml
                 ├── frontend-service.yaml
                 ├── ingress.yaml
@@ -117,6 +136,21 @@ FILES TO GENERATE:
 3. k8s/charts/soc-agent/values.yaml
    Purpose: Default values for local/dev deployment
    Requirements:
+   - redis:
+     - enabled: true
+     - image:
+       - repository: redis
+       - tag: 7-alpine
+       - pullPolicy: IfNotPresent
+     - service:
+       - type: ClusterIP
+       - port: 6379
+     - persistence:
+       - enabled: false  # For local Kind, use true for production
+     - resources:
+       - requests: {cpu: 50m, memory: 128Mi}
+       - limits: {cpu: 200m, memory: 256Mi}
+
    - backend:
      - replicaCount: 2
      - image:
@@ -135,6 +169,7 @@ FILES TO GENERATE:
        - maxReplicas: 8
        - targetCPUUtilizationPercentage: 70
      - env:
+       - REDIS_URL: "redis://{{ include \"soc-agent.fullname\" . }}-redis:6379"
        - OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
        - OTEL_SERVICE_NAME: "soc-agent-system"
        - LOG_LEVEL: "INFO"
@@ -268,7 +303,37 @@ FILES TO GENERATE:
    - metadata.name: {{ include "soc-agent.fullname" . }}-backend-config
    - data: all key-value pairs from .Values.backend.env
 
-10. k8s/charts/soc-agent/templates/frontend-deployment.yaml
+10. k8s/charts/soc-agent/templates/redis-deployment.yaml
+    Purpose: Redis deployment for shared state across backend pods
+    Requirements:
+    - Conditional: {{- if .Values.redis.enabled }}
+    - apiVersion: apps/v1, kind: Deployment
+    - metadata.name: {{ include "soc-agent.fullname" . }}-redis
+    - spec.replicas: 1  # Single Redis instance for local dev
+    - spec.selector.matchLabels: app=redis, release={{ .Release.Name }}
+    - Pod template:
+      - containers:
+        - name: redis
+        - image: {{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}
+        - imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+        - ports: containerPort 6379
+        - resources: {{ .Values.redis.resources }}
+        - livenessProbe: exec {command: ["redis-cli", "ping"]}
+        - readinessProbe: exec {command: ["redis-cli", "ping"]}
+    - CRITICAL: Backend pods depend on this for cross-pod WebSocket broadcasting
+
+11. k8s/charts/soc-agent/templates/redis-service.yaml
+    Purpose: Redis ClusterIP service
+    Requirements:
+    - Conditional: {{- if .Values.redis.enabled }}
+    - apiVersion: v1, kind: Service
+    - metadata.name: {{ include "soc-agent.fullname" . }}-redis
+    - spec.type: {{ .Values.redis.service.type }}
+    - spec.ports: port 6379, targetPort 6379, protocol TCP, name redis
+    - spec.selector: app=redis, release={{ .Release.Name }}
+    - CRITICAL: Backend REDIS_URL must reference this service name
+
+12. k8s/charts/soc-agent/templates/frontend-deployment.yaml
     Purpose: Frontend nginx deployment
     Requirements:
     - apiVersion: apps/v1, kind: Deployment
@@ -284,7 +349,7 @@ FILES TO GENERATE:
         - resources: {{ .Values.frontend.resources }}
         - livenessProbe: httpGet {path: /, port: 80}
 
-11. k8s/charts/soc-agent/templates/frontend-service.yaml
+13. k8s/charts/soc-agent/templates/frontend-service.yaml
     Purpose: Frontend ClusterIP service
     Requirements:
     - apiVersion: v1, kind: Service
@@ -293,7 +358,7 @@ FILES TO GENERATE:
     - spec.ports: port 80, targetPort 80, protocol TCP, name http
     - spec.selector: app=soc-frontend, release={{ .Release.Name }}
 
-12. k8s/charts/soc-agent/templates/ingress.yaml
+14. k8s/charts/soc-agent/templates/ingress.yaml
     Purpose: Nginx ingress for routing external traffic
     Requirements:
     - Conditional: {{- if .Values.ingress.enabled }}
@@ -309,7 +374,7 @@ FILES TO GENERATE:
         - path: /, pathType: Prefix, backend: service frontend port 80
     - spec.tls: (if .Values.ingress.tls is not empty)
 
-13. k8s/charts/soc-agent/templates/NOTES.txt
+15. k8s/charts/soc-agent/templates/NOTES.txt
     Purpose: Post-installation instructions
     Requirements:
     - Print deployment status
@@ -318,11 +383,14 @@ FILES TO GENERATE:
       - "kubectl port-forward svc/{{ include "soc-agent.fullname" . }}-backend 8000:8000"
     - Show how to check pod status:
       - "kubectl get pods -l app=soc-backend"
+      - "kubectl get pods -l app=redis"
       - "kubectl logs -l app=soc-backend --tail=50"
     - Show HPA status (if enabled):
       - "kubectl get hpa"
+    - Show Redis connection status:
+      - "kubectl exec -it <backend-pod> -- env | grep REDIS_URL"
 
-14. k8s/deploy.sh
+16. k8s/deploy.sh
     Purpose: Automated deployment script for Kind cluster
     Requirements:
     - Shebang: #!/bin/bash
@@ -339,8 +407,8 @@ FILES TO GENERATE:
 
     - Step 3: Build and load Docker images
       - cd to project root
-      - docker build -t soc-backend:latest -f backend/Dockerfile.backend backend/
-      - docker build -t soc-frontend:latest -f frontend/Dockerfile.frontend frontend/
+      - docker build -t soc-backend:latest -f backend/Dockerfile backend/
+      - docker build -t soc-frontend:latest -f frontend/Dockerfile frontend/
       - kind load docker-image soc-backend:latest --name soc-demo
       - kind load docker-image soc-frontend:latest --name soc-demo
       - Echo "✅ Images loaded into Kind cluster"
@@ -356,14 +424,20 @@ FILES TO GENERATE:
 
     - Step 6: Verify deployment
       - kubectl get pods -l app=soc-backend
+      - kubectl get pods -l app=redis
       - kubectl get hpa
       - kubectl get ingress
+      - Echo "Waiting for backend pods to be ready..."
+      - kubectl wait --for=condition=ready pod -l app=soc-backend --timeout=120s
 
     - Step 7: Print access instructions
       - Echo "=== Deployment Complete ==="
       - Echo "SOC Dashboard: http://localhost:8080"
       - Echo "Backend API: http://localhost:8080/api/threats"
       - Echo "Health Check: curl http://localhost:8080/health"
+      - Echo ""
+      - Echo "Backend Pods: $(kubectl get pods -l app=soc-backend --no-headers | wc -l)"
+      - Echo "Redis Status: $(kubectl get pods -l app=redis --no-headers)"
       - Echo ""
       - Echo "To view logs: kubectl logs -l app=soc-backend --tail=50 -f"
       - Echo "To check HPA: kubectl get hpa -w"
@@ -395,7 +469,9 @@ FILES TO GENERATE:
 
     - Configuration section:
       - Table of key values.yaml parameters
+      - redis.enabled, redis.image.*, redis.resources
       - backend.replicaCount, backend.image.*, backend.resources, backend.hpa.*
+      - backend.env.REDIS_URL (REQUIRED for multi-pod deployment)
       - frontend.replicaCount, frontend.image.*
       - ingress.enabled, ingress.className, ingress.hosts
 
@@ -411,6 +487,42 @@ FILES TO GENERATE:
 
     - Uninstalling section:
       - helm uninstall soc-agent
+
+    - Architecture section:
+      - Explain Redis requirement for multi-pod deployment
+      - "Backend pods share state via Redis for cross-pod WebSocket broadcasting"
+      - "Without Redis, each pod has isolated state (split-brain problem)"
+      - "Integration tests validate this architecture (backend/tests/test_redis_pubsub_integration.py)"
+
+CRITICAL ARCHITECTURE NOTES:
+
+1. Redis is REQUIRED for multi-pod deployment:
+   - Backend pods share state via Redis (threat storage)
+   - WebSocket real-time updates use Redis Pub/Sub channel "threats:events"
+   - Without Redis, each pod has isolated state (split-brain problem)
+   - Falls back to in-memory store if Redis unavailable (single pod only)
+
+2. Backend MUST have REDIS_URL environment variable:
+   - Set to: redis://{{ include "soc-agent.fullname" . }}-redis:6379
+   - Backend will fail health checks if Redis is unreachable
+   - Health endpoint /ready checks Redis connectivity
+
+3. Integration tests validate this architecture:
+   - See backend/tests/test_redis_pubsub_integration.py
+   - Tests simulate 3 pods with cross-pod WebSocket broadcasting
+   - All 5 tests passing confirms Kubernetes-ready architecture
+   - Test scenario: Deploy 3 pods → Connect 3 WebSocket clients → Trigger threat on Pod A → ALL 3 clients receive it
+
+4. Horizontal Pod Autoscaling (HPA):
+   - Backend can scale from 2 to 8 replicas
+   - All replicas share Redis state
+   - WebSocket clients can connect to any pod
+   - All clients receive all threats via Redis Pub/Sub
+
+5. Docker Images:
+   - Backend: soc-backend:latest (built from backend/Dockerfile)
+   - Frontend: soc-frontend:latest (built from frontend/Dockerfile)
+   - Redis: redis:7-alpine (official image from Docker Hub)
 
 CONSTRAINTS:
 - All Kubernetes manifests must use Helm templating (no hardcoded values)
@@ -465,6 +577,11 @@ Include these in README.md or NOTES.txt:
    checking after 5s (app initializes fast), liveness probe after 10s with 30s
    intervals (don't restart unnecessarily)."
 
+6. "Redis is critical for multi-pod deployment — all backend pods share state via Redis.
+   WebSocket clients can connect to any pod and receive all threats via Redis Pub/Sub.
+   I validated this with integration tests that simulate 3 pods with cross-pod broadcasting.
+   Without Redis, you'd have a split-brain problem where each pod has isolated state."
+
 OUTPUT STRUCTURE:
 k8s/
 ├── kind-config.yaml
@@ -482,6 +599,8 @@ k8s/
             ├── backend-service.yaml
             ├── backend-hpa.yaml
             ├── backend-configmap.yaml
+            ├── redis-deployment.yaml (NEW - REQUIRED)
+            ├── redis-service.yaml (NEW - REQUIRED)
             ├── frontend-deployment.yaml
             ├── frontend-service.yaml
             ├── ingress.yaml
@@ -512,6 +631,7 @@ After Intent generates these files, you should be able to:
 3. **Verify deployment:**
    ```bash
    kubectl get pods -l app=soc-backend
+   kubectl get pods -l app=redis
    kubectl get hpa
    curl http://localhost:8080/health
    ```
@@ -525,6 +645,9 @@ After Intent generates these files, you should be able to:
 
    # Check logs
    kubectl logs -l app=soc-backend --tail=20
+
+   # Verify Redis connection
+   kubectl exec -it $(kubectl get pod -l app=soc-backend -o jsonpath='{.items[0].metadata.name}') -- env | grep REDIS_URL
    ```
 
 5. **Clean up:**
@@ -547,9 +670,10 @@ When presenting this to Alex/Gui:
    - Explain each step as it executes
 
 3. **Show Kubernetes resources:**
-   - `kubectl get pods` — show 2 backend replicas
+   - `kubectl get pods` — show 2 backend replicas + 1 Redis pod
    - `kubectl get hpa` — explain autoscaling configuration
    - `kubectl get ingress` — show routing rules
+   - `kubectl get svc` — show backend, frontend, and Redis services
 
 4. **Demonstrate health probes:**
    - `kubectl describe pod <backend-pod>` — show liveness/readiness config

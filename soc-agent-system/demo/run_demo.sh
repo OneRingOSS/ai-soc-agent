@@ -255,13 +255,46 @@ if [ "$RAN_REAL_API_TEST" = true ]; then
 fi
 
 echo "─────────────────────────────────────────────"
-echo "Step 3: Load Test with Mock Responses"
+echo "Step 3: Load Test"
 echo "─────────────────────────────────────────────"
 echo ""
-echo "Running load test — 20 users, spawn rate 5, duration 2m"
-echo "  ⚡ Using MOCK mode for speed and cost efficiency"
-echo "  📊 Watch the dashboards update in real-time!"
+echo "The load test can run in two modes:"
+echo "  1. MOCK mode (fast, free, instant responses)"
+echo "  2. LIVE mode (slow, costs ~$5-10, real OpenAI API)"
 echo ""
+echo "⚠️  LIVE mode will make 1,800+ OpenAI API calls over 2 minutes!"
+echo "    This will cost approximately $5-10 and take much longer."
+echo ""
+read -p "Run load test with LIVE OpenAI API? (y/N): " -n 1 -r
+echo ""
+echo ""
+
+USE_LIVE_API=false
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  USE_LIVE_API=true
+
+  # Ensure API key is available
+  if [ -z "$OPENAI_API_KEY" ]; then
+    BACKEND_ENV="$SCRIPT_DIR/../backend/.env"
+    if [ -f "$BACKEND_ENV" ]; then
+      echo "📄 Loading OPENAI_API_KEY from backend/.env..."
+      OPENAI_API_KEY=$(grep "^OPENAI_API_KEY=" "$BACKEND_ENV" | cut -d'=' -f2- | tr -d ' "' | tr -d "'")
+      export OPENAI_API_KEY
+    fi
+  fi
+
+  if [ -z "$OPENAI_API_KEY" ]; then
+    echo "❌ OPENAI_API_KEY is not set!"
+    echo ""
+    read -p "Enter your OpenAI API key (or press Enter to use MOCK mode): " API_KEY
+    if [ -n "$API_KEY" ]; then
+      export OPENAI_API_KEY="$API_KEY"
+    else
+      echo "⏭️  Switching to MOCK mode"
+      USE_LIVE_API=false
+    fi
+  fi
+fi
 
 if ! command -v locust &> /dev/null; then
   echo "❌ Locust is not installed. Install with: pip install locust"
@@ -273,6 +306,102 @@ LOCUSTFILE="$SCRIPT_DIR/../loadtests/locustfile.py"
 REPORT_DIR="$SCRIPT_DIR"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+# Restart backend in the appropriate mode
+echo "─────────────────────────────────────────────"
+if [ "$USE_LIVE_API" = true ]; then
+  echo "🔴 LIVE API MODE"
+  echo "─────────────────────────────────────────────"
+  echo ""
+  echo "Running load test — 20 users, spawn rate 5, duration 2m"
+  echo "  🔴 Using LIVE OpenAI API (expect 8-15s per threat)"
+  echo "  💰 This will cost approximately $5-10"
+  echo "  📊 Watch the dashboards update in real-time!"
+  echo ""
+
+  # Ensure OPENAI_API_KEY is set for backend restart
+  if [ -z "$OPENAI_API_KEY" ]; then
+    echo "❌ OPENAI_API_KEY is not available. Cannot run in LIVE mode."
+    exit 1
+  fi
+
+  echo "  🔄 Restarting backend in LIVE API mode..."
+else
+  echo "⚡ MOCK MODE"
+  echo "─────────────────────────────────────────────"
+  echo ""
+  echo "Running load test — 20 users, spawn rate 5, duration 2m"
+  echo "  ⚡ Using MOCK mode for speed and cost efficiency"
+  echo "  📊 Watch the dashboards update in real-time!"
+  echo ""
+
+  echo "  🔄 Restarting backend in MOCK mode..."
+  # Unset API key to force mock mode
+  unset OPENAI_API_KEY
+fi
+
+echo ""
+
+# Find and kill the existing backend process
+BACKEND_PID=$(lsof -ti:8000 2>/dev/null)
+if [ -n "$BACKEND_PID" ]; then
+  echo "  → Stopping backend (PID: $BACKEND_PID)..."
+  kill "$BACKEND_PID" 2>/dev/null || true
+  sleep 2
+fi
+
+# Start backend in the appropriate mode
+echo "  → Starting backend..."
+cd "$SCRIPT_DIR/../backend"
+if [ -d "venv" ]; then
+  source venv/bin/activate
+fi
+
+# Start backend in background
+if [ "$USE_LIVE_API" = true ]; then
+  # Start with OPENAI_API_KEY set
+  OPENAI_API_KEY="$OPENAI_API_KEY" python -m uvicorn src.main:app --port 8000 > /tmp/soc-backend-loadtest.log 2>&1 &
+else
+  # Start without OPENAI_API_KEY (force mock mode)
+  env -u OPENAI_API_KEY python -m uvicorn src.main:app --port 8000 > /tmp/soc-backend-loadtest.log 2>&1 &
+fi
+
+BACKEND_PID=$!
+echo "  → Backend started (PID: $BACKEND_PID)"
+
+# Wait for backend to be ready
+echo "  → Waiting for backend to be ready..."
+for i in {1..30}; do
+  if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+    if [ "$USE_LIVE_API" = true ]; then
+      echo "  ✅ Backend ready in LIVE API mode!"
+    else
+      echo "  ✅ Backend ready in MOCK mode!"
+    fi
+    break
+  fi
+  sleep 1
+done
+
+# Verify the mode by checking the logs
+if [ "$USE_LIVE_API" = true ]; then
+  if grep -q "Mode: LIVE" /tmp/soc-backend-loadtest.log 2>/dev/null; then
+    echo "  ✅ Confirmed: Backend is running in LIVE API mode"
+  else
+    echo "  ⚠️  Warning: Could not confirm LIVE mode from logs"
+  fi
+else
+  if grep -q "Mode: MOCK" /tmp/soc-backend-loadtest.log 2>/dev/null; then
+    echo "  ✅ Confirmed: Backend is running in MOCK mode"
+  else
+    echo "  ⚠️  Warning: Could not confirm MOCK mode from logs"
+  fi
+fi
+
+echo ""
+sleep 1
+
+# Run the load test
+cd "$SCRIPT_DIR"
 locust -f "$LOCUSTFILE" \
   --host=http://localhost:8000 \
   --headless \
@@ -316,11 +445,20 @@ echo " generating all 6 threat types: bot traffic, proxy networks,"
 echo " device compromises, anomaly detections, rate limit breaches,"
 echo " and geo anomalies."
 echo ""
-echo " ⚡ IMPORTANT: This demo uses mock responses for speed and cost"
-echo " efficiency. In production with real OpenAI API calls, we'd expect"
-echo " 8-15 second response times per threat due to LLM processing."
-echo " The architecture supports this through async processing and proper"
-echo " timeout handling."
+
+if [ "$USE_LIVE_API" = true ]; then
+  echo " 🔴 This demo used the REAL OpenAI API for all threat analyses."
+  echo " You can see the 8-15 second response times per threat in the"
+  echo " load test report, which is realistic for production LLM processing."
+  echo " The architecture handles this through async processing, proper"
+  echo " timeout handling, and horizontal scaling with Redis Pub/Sub."
+else
+  echo " ⚡ This demo used mock responses for speed and cost efficiency."
+  echo " In production with real OpenAI API calls, we'd expect 8-15 second"
+  echo " response times per threat due to LLM processing. The architecture"
+  echo " supports this through async processing and proper timeout handling."
+fi
+
 echo ""
 echo " In Grafana, you can see the threat processing rate, agent"
 echo " execution latency, and false positive score distribution —"
@@ -333,8 +471,12 @@ echo ""
 echo " The SOC Dashboard shows the live threat feed with severity"
 echo " classification, MITRE ATT&CK mapping, and response plans."
 echo ""
-echo " The system is fully integrated with OpenAI's API — I can demonstrate"
-echo " a real example if you'd like to see actual LLM-generated analysis.\""
+
+if [ "$USE_LIVE_API" = false ]; then
+  echo " The system is fully integrated with OpenAI's API — I can demonstrate"
+  echo " a real example if you'd like to see actual LLM-generated analysis.\""
+fi
+
 echo ""
 echo "=============================================="
 
