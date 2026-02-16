@@ -4,6 +4,13 @@ metadata:
   name: {{ include "soc-agent.fullname" . }}-backend
   labels:
     {{- include "soc-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+  {{- if and .Values.observability.enabled .Values.observability.prometheus.enabled }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+  {{- end }}
 spec:
   type: {{ .Values.backend.service.type }}
   ports:

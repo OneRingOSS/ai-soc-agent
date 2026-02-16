@@ -1,0 +1,24 @@
+{{- if and .Values.observability.enabled .Values.observability.prometheus.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "soc-agent.fullname" . }}-backend
+  namespace: {{ .Values.observability.namespace }}
+  labels:
+    {{- include "soc-agent.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  selector:
+    matchLabels:
+      {{- include "soc-agent.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  namespaceSelector:
+    matchNames:
+      - {{ .Release.Namespace }}
+  endpoints:
+    - port: http
+      path: {{ .Values.observability.prometheus.serviceMonitor.path }}
+      interval: {{ .Values.observability.prometheus.serviceMonitor.interval }}
+      scrapeTimeout: 10s
+{{- end }}
+

@@ -97,3 +97,38 @@ ingress:
           backend: backend
   tls: []
 
+# -- Observability stack configuration
+observability:
+  # -- Enable observability stack (Prometheus, Grafana, Jaeger, Loki)
+  enabled: false  # Set to true to deploy observability stack
+
+  # -- Namespace for observability components
+  namespace: observability
+
+  # -- Prometheus configuration
+  prometheus:
+    enabled: true
+    # -- ServiceMonitor to scrape backend metrics
+    serviceMonitor:
+      enabled: true
+      interval: 15s
+      path: /metrics
+
+  # -- Grafana configuration
+  grafana:
+    enabled: true
+    adminPassword: admin  # Change in production!
+    # -- Import SOC Agent dashboard
+    dashboards:
+      enabled: true
+
+  # -- Jaeger configuration
+  jaeger:
+    enabled: true
+    # -- Jaeger collector endpoint
+    collectorEndpoint: "http://jaeger-collector:14268/api/traces"
+
+  # -- Loki configuration for log aggregation
+  loki:
+    enabled: true
+
