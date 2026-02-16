@@ -1,11 +1,12 @@
 #!/bin/bash
 # Performance Integration Tests
-# Runs Locust load tests against K8s deployment and verifies cross-pod state sharing
+# Runs Locust load tests against K8s deployment or Docker Compose and verifies state sharing
 #
 # Usage:
-#   ./test_performance.sh              # Run tests, leave deployment running
-#   ./test_performance.sh --cleanup    # Run tests, then cleanup
-#   ./test_performance.sh --help       # Show help
+#   ./test_performance.sh                    # Run tests against K8s, leave deployment running
+#   ./test_performance.sh --cleanup          # Run tests against K8s, then cleanup
+#   ./test_performance.sh --mode docker      # Run tests against Docker Compose
+#   ./test_performance.sh --help             # Show help
 
 set -e
 
@@ -22,7 +23,7 @@ RELEASE_NAME="${RELEASE_NAME:-soc-agent-test}"
 CHART_PATH="../charts/soc-agent"
 BACKEND_PORT=9080
 FRONTEND_PORT=9081
-LOCUST_DIR="../../load-testing"
+LOCUST_DIR="../../loadtests"
 CLEANUP_AFTER_TESTS=false
 
 # Test results
@@ -68,14 +69,20 @@ log_warning() { echo -e "${YELLOW}[!]${NC} $1"; }
 # Test: Deploy SOC Agent with multiple replicas
 test_deploy() {
     log_info "Deploying SOC Agent with multiple replicas..."
-    
+
+    # Clean up any existing deployment first
+    helm uninstall "$RELEASE_NAME" -n "$NAMESPACE" 2>/dev/null || true
+    kubectl delete namespace "$NAMESPACE" 2>/dev/null || true
+    sleep 5
+
     # Create namespace
     kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - || true
-    
-    # Deploy with 3 backend replicas
+
+    # Deploy with 3 backend replicas (using HPA minReplicas)
     if helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
         --namespace "$NAMESPACE" \
-        --set backend.replicas=3 \
+        --set backend.hpa.minReplicas=3 \
+        --set backend.hpa.maxReplicas=10 \
         --set redis.enabled=true \
         --wait --timeout=300s; then
         log_success "Deployment successful (3 backend replicas)"
@@ -83,8 +90,10 @@ test_deploy() {
         log_error "Deployment failed"
         return 1
     fi
-    
-    sleep 10
+
+    # Wait for all pods to be ready
+    log_info "Waiting for all pods to be ready..."
+    sleep 15
 }
 
 # Test: Verify multiple replicas are running
@@ -104,9 +113,19 @@ test_verify_replicas() {
 # Test: Run Locust load test
 test_locust_load() {
     log_info "Running Locust load test..."
-    
-    # Check if Locust is installed
-    if ! command -v locust &> /dev/null; then
+
+    # Get script directory for absolute paths
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    # Find Locust (check venv first, then system)
+    LOCUST_CMD=""
+    if [ -f "$SCRIPT_DIR/../../backend/venv/bin/locust" ]; then
+        LOCUST_CMD="$SCRIPT_DIR/../../backend/venv/bin/locust"
+        log_info "Using Locust from venv: $LOCUST_CMD"
+    elif command -v locust &> /dev/null; then
+        LOCUST_CMD="locust"
+        log_info "Using system Locust"
+    else
         log_error "Locust not installed. Install with: pip install locust"
         return 1
     fi
@@ -120,10 +139,10 @@ test_locust_load() {
     
     # Run Locust in headless mode
     log_info "Running Locust test (60 seconds, 10 users, 2 spawn rate)..."
-    
+
     cd "$LOCUST_DIR"
-    
-    if locust -f locustfile.py \
+
+    if "$LOCUST_CMD" -f locustfile.py \
         --headless \
         --users 10 \
         --spawn-rate 2 \
@@ -190,19 +209,19 @@ test_response_times() {
     PF_PID=$!
     sleep 5
 
-    # Measure response time for health endpoint
+    # Measure response time for health endpoint using curl's time measurement
     TOTAL_TIME=0
     ITERATIONS=10
 
     for i in $(seq 1 $ITERATIONS); do
-        START=$(date +%s%N)
-        curl -s http://localhost:$BACKEND_PORT/api/health > /dev/null
-        END=$(date +%s%N)
-        ELAPSED=$((($END - $START) / 1000000))  # Convert to milliseconds
-        TOTAL_TIME=$(($TOTAL_TIME + $ELAPSED))
+        # Use curl's built-in time measurement (in seconds, with decimals)
+        TIME_SECONDS=$(curl -s -o /dev/null -w '%{time_total}' http://localhost:$BACKEND_PORT/health)
+        # Convert to milliseconds (multiply by 1000)
+        TIME_MS=$(echo "$TIME_SECONDS * 1000" | bc)
+        TOTAL_TIME=$(echo "$TOTAL_TIME + $TIME_MS" | bc)
     done
 
-    AVG_TIME=$(($TOTAL_TIME / $ITERATIONS))
+    AVG_TIME=$(echo "scale=0; $TOTAL_TIME / $ITERATIONS" | bc)
 
     # Kill port-forward
     kill $PF_PID 2>/dev/null || true
