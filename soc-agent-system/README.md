@@ -207,11 +207,26 @@ PYTHONPATH=src pytest tests/ -v
 # Start backend server
 cd src
 PYTHONPATH=. uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# To stop the backend (if running in background):
+# lsof -ti:8000 | xargs kill
 ```
 
 > **⚠️ Troubleshooting**: If you get a `pydantic-core` build error, you're likely using Python 3.13+. Delete the `venv` folder and recreate it with Python 3.9-3.12.
 
 Backend will be available at: **http://localhost:8000**
+
+**Useful Commands:**
+```bash
+# Check if backend is running
+curl http://localhost:8000/health
+
+# Stop backend (if running in background)
+lsof -ti:8000 | xargs kill
+
+# View backend logs (if started with run_with_logging.sh)
+tail -f observability/logs/soc-agent.log
+```
 
 #### 3. Frontend Setup
 
