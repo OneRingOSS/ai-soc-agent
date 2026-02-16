@@ -1,6 +1,11 @@
 #!/bin/bash
 # Integration test suite for SOC Agent Kubernetes deployment
 # Tests Helm chart deployment, pod health, service connectivity, and E2E flows
+#
+# Usage:
+#   ./integration_test.sh              # Run tests, leave deployment running
+#   ./integration_test.sh --cleanup    # Run tests, then cleanup deployment
+#   ./integration_test.sh --help       # Show help
 
 set -e  # Exit on error
 
@@ -16,11 +21,42 @@ NAMESPACE="${NAMESPACE:-soc-agent-test}"
 RELEASE_NAME="${RELEASE_NAME:-soc-agent-test}"
 TIMEOUT="${TIMEOUT:-300}"  # 5 minutes
 CHART_PATH="../charts/soc-agent"
+CLEANUP_AFTER_TESTS=false
 
 # Test results tracking
 TESTS_PASSED=0
 TESTS_FAILED=0
 FAILED_TESTS=()
+
+# Parse command line arguments
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --cleanup)
+                CLEANUP_AFTER_TESTS=true
+                shift
+                ;;
+            --help|-h)
+                echo "Usage: $0 [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --cleanup    Tear down deployment after tests complete"
+                echo "  --help       Show this help message"
+                echo ""
+                echo "Environment variables:"
+                echo "  NAMESPACE      Kubernetes namespace (default: soc-agent-test)"
+                echo "  RELEASE_NAME   Helm release name (default: soc-agent-test)"
+                echo "  TIMEOUT        Deployment timeout in seconds (default: 300)"
+                exit 0
+                ;;
+            *)
+                echo "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+}
 
 # Helper functions
 log_info() {
@@ -29,12 +65,12 @@ log_info() {
 
 log_success() {
     echo -e "${GREEN}[✓]${NC} $1"
-    ((TESTS_PASSED++))
+    ((TESTS_PASSED++)) || true
 }
 
 log_error() {
     echo -e "${RED}[✗]${NC} $1"
-    ((TESTS_FAILED++))
+    ((TESTS_FAILED++)) || true
     FAILED_TESTS+=("$1")
 }
 
@@ -171,12 +207,48 @@ main() {
     fi
 }
 
-# Cleanup on exit
-cleanup() {
+# Cleanup function
+cleanup_port_forwards() {
     log_info "Cleaning up port-forwards..."
     pkill -f "kubectl port-forward" 2>/dev/null || true
 }
-trap cleanup EXIT
 
-main "$@"
+cleanup_deployment() {
+    log_info "========================================="
+    log_info "Cleaning up deployment..."
+    log_info "========================================="
+
+    # Uninstall Helm release
+    if helm list -n "$NAMESPACE" | grep -q "$RELEASE_NAME"; then
+        log_info "Uninstalling Helm release: $RELEASE_NAME"
+        helm uninstall "$RELEASE_NAME" -n "$NAMESPACE" || true
+        log_success "Helm release uninstalled"
+    fi
+
+    # Delete namespace
+    if kubectl get namespace "$NAMESPACE" &>/dev/null; then
+        log_info "Deleting namespace: $NAMESPACE"
+        kubectl delete namespace "$NAMESPACE" --timeout=60s || true
+        log_success "Namespace deleted"
+    fi
+
+    log_success "Cleanup complete!"
+    log_info ""
+    log_info "Note: Kind cluster is still running. To delete it, run:"
+    log_info "  kind delete cluster --name soc-agent-cluster"
+}
+
+# Trap to cleanup port-forwards on exit
+trap cleanup_port_forwards EXIT
+
+# Parse arguments first
+parse_args "$@"
+
+# Run main tests
+main
+
+# Cleanup if requested
+if [ "$CLEANUP_AFTER_TESTS" = true ]; then
+    cleanup_deployment
+fi
 

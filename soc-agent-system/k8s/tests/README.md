@@ -44,7 +44,10 @@ kind version
 tests/
 ├── README.md                    # This file
 ├── integration_test.sh          # Main integration test suite
-└── test_connectivity.sh         # Connectivity and E2E tests
+├── test_connectivity.sh         # Connectivity and E2E tests
+├── cleanup.sh                   # Cleanup script for test environment
+├── check_prerequisites.sh       # Prerequisites checker
+└── setup_and_test.sh            # Combined setup and test runner
 ```
 
 ## Running the Tests
@@ -56,7 +59,8 @@ Runs complete deployment and validation:
 ```bash
 cd soc-agent-system/k8s/tests
 chmod +x *.sh
-./integration_test.sh
+./integration_test.sh              # Run tests, leave deployment running
+./integration_test.sh --cleanup    # Run tests, then cleanup deployment
 ```
 
 This will:
@@ -65,6 +69,7 @@ This will:
 3. Wait for all pods to be ready
 4. Verify services exist
 5. Test backend health endpoint
+6. (Optional) Cleanup deployment if `--cleanup` flag is used
 
 ### Option 2: Connectivity Tests Only
 
@@ -139,10 +144,10 @@ chmod +x *.sh
 # 4. Run connectivity tests
 ./test_connectivity.sh
 
-# 5. Cleanup (optional)
-cd ..
-./teardown.sh
-kind delete cluster --name soc-agent-cluster
+# 5. Cleanup (see Cleanup section below)
+cd tests
+./cleanup.sh                        # Cleanup deployment only
+./cleanup.sh --delete-cluster       # Cleanup deployment and Kind cluster
 ```
 
 ## Test Output
@@ -185,6 +190,70 @@ kind delete cluster --name soc-agent-cluster
 [✗] Failed tests:
   - Backend health check failed
 ```
+
+## Cleanup
+
+After running tests, you should clean up the test environment to free up resources.
+
+### Option 1: Cleanup Deployment Only
+
+Removes the Helm release and namespace, but keeps the Kind cluster running:
+
+```bash
+cd soc-agent-system/k8s/tests
+./cleanup.sh
+```
+
+This is useful if you want to run tests again without recreating the cluster.
+
+### Option 2: Cleanup Everything
+
+Removes the Helm release, namespace, AND deletes the Kind cluster:
+
+```bash
+cd soc-agent-system/k8s/tests
+./cleanup.sh --delete-cluster
+```
+
+This completely removes all test resources.
+
+### Option 3: Cleanup During Test Run
+
+Run tests and automatically cleanup afterwards:
+
+```bash
+cd soc-agent-system/k8s/tests
+./integration_test.sh --cleanup
+```
+
+### Manual Cleanup
+
+If the cleanup script fails, you can manually clean up:
+
+```bash
+# Uninstall Helm release
+helm uninstall soc-agent-test -n soc-agent-test
+
+# Delete namespace
+kubectl delete namespace soc-agent-test
+
+# Delete Kind cluster
+kind delete cluster --name soc-agent-cluster
+
+# Kill any port-forwards
+pkill -f "kubectl port-forward"
+```
+
+### What Gets Cleaned Up
+
+The cleanup process removes:
+- ✅ All Kubernetes pods (backend, frontend, Redis)
+- ✅ All Kubernetes services
+- ✅ ConfigMaps and Secrets
+- ✅ Helm release
+- ✅ Kubernetes namespace
+- ✅ Port-forward processes
+- ✅ (Optional) Kind cluster and Docker containers
 
 ## Troubleshooting
 
