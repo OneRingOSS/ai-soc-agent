@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     )
     
     # Threat Generation
+    enable_auto_threat_generation: bool = Field(default=False, env="ENABLE_AUTO_THREAT_GENERATION")
     threat_generation_interval: int = Field(default=30, env="THREAT_GENERATION_INTERVAL")
     max_stored_threats: int = Field(default=100, env="MAX_STORED_THREATS")
 

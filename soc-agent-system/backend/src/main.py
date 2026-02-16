@@ -65,9 +65,12 @@ async def lifespan(app: FastAPI):
     coordinator = create_coordinator(use_mock=settings.should_use_mock())
     set_coordinator(coordinator)
 
-    # Startup: Start background threat generation
-    logger.info("   Starting background threat generator...")
-    task = asyncio.create_task(background_threat_generator())
+    # Startup: Conditionally start background threat generation
+    if settings.enable_auto_threat_generation:
+        logger.info("   Starting background threat generator...")
+        task = asyncio.create_task(background_threat_generator())
+    else:
+        logger.info("   Background threat generation disabled (use demo/test scripts or /api/threats/trigger)")
 
     logger.info("✅ SOC Agent System ready!\n")
 

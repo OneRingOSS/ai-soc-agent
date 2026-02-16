@@ -79,13 +79,7 @@ function App() {
     }
   }
 
-  const triggerThreat = async (scenario) => {
-    try {
-      await axios.post('/api/threats/trigger', { scenario })
-    } catch (err) {
-      console.error('Failed to trigger threat:', err)
-    }
-  }
+
 
   const toggleFilter = (filterType) => {
     setFilter(filter === filterType ? 'all' : filterType)
@@ -177,16 +171,7 @@ function App() {
           </div>
         )}
 
-        {/* Trigger Buttons */}
-        <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <button onClick={() => triggerThreat('bot_attack')}>Trigger Bot Attack</button>
-          <button onClick={() => triggerThreat('crypto_surge')}>Trigger Crypto Surge</button>
-          <button onClick={() => triggerThreat('geo_impossible')}>Trigger Impossible Travel</button>
-          <button onClick={() => triggerThreat('critical_threat')} className="btn-critical">
-            🚨 Trigger Critical Threat
-          </button>
-          <button onClick={() => triggerThreat(null)}>Trigger Random</button>
-        </div>
+
 
         {/* Threats List */}
         <div className="threats-list">
@@ -205,7 +190,7 @@ function App() {
             <p style={{ color: 'rgba(255,255,255,0.6)', padding: '2rem', textAlign: 'center' }}>
               {filter === 'review'
                 ? 'No threats requiring review.'
-                : 'No threats detected yet. Click a button above to generate a threat.'}
+                : 'No threats detected yet.'}
             </p>
           ) : (
             filteredThreats.map(threat => (
