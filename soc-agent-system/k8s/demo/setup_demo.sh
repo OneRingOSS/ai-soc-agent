@@ -120,18 +120,18 @@ echo ""
 
 log_info "Building backend image..."
 cd "$SCRIPT_DIR/../../backend"
-docker build -t soc-agent-backend:latest -f ../k8s/docker/Dockerfile.backend .
+docker build -t soc-backend:latest .
 log_success "Backend image built"
 
 log_info "Building frontend image..."
 cd "$SCRIPT_DIR/../../frontend"
-docker build -t soc-agent-frontend:latest -f ../k8s/docker/Dockerfile.frontend .
+docker build -t soc-frontend:latest .
 log_success "Frontend image built"
 
 echo ""
 log_info "Loading images into Kind cluster..."
-kind load docker-image soc-agent-backend:latest --name "$CLUSTER_NAME"
-kind load docker-image soc-agent-frontend:latest --name "$CLUSTER_NAME"
+kind load docker-image soc-backend:latest --name "$CLUSTER_NAME"
+kind load docker-image soc-frontend:latest --name "$CLUSTER_NAME"
 log_success "Images loaded into Kind cluster"
 
 echo ""
