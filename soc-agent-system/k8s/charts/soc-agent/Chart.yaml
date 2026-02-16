@@ -1,0 +1,12 @@
+apiVersion: v2
+name: soc-agent
+description: "SOC Agent System - Multi-agent threat analysis platform with observability"
+type: application
+version: 1.0.0
+appVersion: "2.0.0"
+keywords:
+  - security
+  - soc
+  - observability
+  - ai-agents
+
