@@ -33,7 +33,7 @@
 #
 # ============================================================================
 
-.PHONY: help lint test scan-secrets scan-image quality-gate build up down clean demo all
+.PHONY: help lint test test-integration scan-secrets scan-image quality-gate build up down clean demo all
 
 # Default target
 help:
@@ -41,11 +41,12 @@ help:
 	@echo "=========================================="
 	@echo ""
 	@echo "Quality Gates:"
-	@echo "  make lint          - Run ruff linter on backend code"
-	@echo "  make test          - Run pytest with coverage (80%+ required)"
-	@echo "  make scan-secrets  - Scan for secrets using TruffleHog"
-	@echo "  make scan-image    - Scan Docker images using Trivy"
-	@echo "  make quality-gate  - Run all quality gates"
+	@echo "  make lint             - Run ruff linter on backend code"
+	@echo "  make test             - Run unit tests with coverage (60%+ required)"
+	@echo "  make test-integration - Run integration tests (requires Redis)"
+	@echo "  make scan-secrets     - Scan for secrets using TruffleHog"
+	@echo "  make scan-image       - Scan Docker images using Trivy"
+	@echo "  make quality-gate     - Run all quality gates (unit tests only)"
 	@echo ""
 	@echo "Docker Operations:"
 	@echo "  make build         - Build Docker images"
@@ -67,10 +68,14 @@ lint:
 	@echo "✅ Linting passed"
 
 test:
-	@echo "🧪 Running tests with coverage..."
+	@echo "🧪 Running unit tests with coverage..."
 	@cd backend && pytest tests/test_agents.py tests/test_coordinator.py tests/test_threat_generator.py \
-		-v --cov=src --cov-report=term-missing --cov-fail-under=60
-	@echo "✅ Tests passed with 60%+ coverage"
+		-v --cov=src --cov-report=term-missing --cov-fail-under=60 -m "not integration"
+	@echo "✅ Unit tests passed with 60%+ coverage"
+
+test-integration:
+	@echo "🧪 Running integration tests (requires Redis)..."
+	@cd backend && bash run_integration_tests.sh
 
 scan-secrets:
 	@echo "🔐 Scanning for secrets..."

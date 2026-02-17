@@ -24,12 +24,20 @@ echo -e "${BLUE}========================================${NC}\n"
 
 # Check if Redis is running
 echo -e "${YELLOW}[1/4] Checking Redis connection...${NC}"
-if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+
+# Function to check if Redis is responding (without redis-cli)
+check_redis() {
+    # Try to connect using Python
+    python3 -c "import socket; s = socket.socket(); s.settimeout(1); s.connect(('localhost', 6379)); s.close()" 2>/dev/null
+    return $?
+}
+
+if check_redis; then
     echo -e "${GREEN}✅ Redis is running on localhost:6379${NC}\n"
     REDIS_STARTED_BY_SCRIPT=false
 else
     echo -e "${YELLOW}⚠️  Redis not running. Attempting to start with Docker...${NC}"
-    
+
     # Check if Docker is available
     if ! command -v docker &> /dev/null; then
         echo -e "${RED}❌ Docker not found. Please install Docker or start Redis manually.${NC}"
@@ -37,29 +45,31 @@ else
         echo -e "  docker run -d -p 6379:6379 --name redis-test redis:7-alpine"
         exit 1
     fi
-    
+
     # Check if redis-test container already exists
     if docker ps -a --format '{{.Names}}' | grep -q '^redis-test$'; then
         echo -e "${YELLOW}Starting existing redis-test container...${NC}"
-        docker start redis-test > /dev/null
+        docker start redis-test > /dev/null 2>&1
     else
         echo -e "${YELLOW}Creating new redis-test container...${NC}"
-        docker run -d -p 6379:6379 --name redis-test redis:7-alpine > /dev/null
+        docker run -d -p 6379:6379 --name redis-test redis:7-alpine > /dev/null 2>&1
     fi
-    
+
     # Wait for Redis to be ready
     echo -e "${YELLOW}Waiting for Redis to be ready...${NC}"
     for i in {1..10}; do
-        if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+        if check_redis; then
             echo -e "${GREEN}✅ Redis started successfully${NC}\n"
             REDIS_STARTED_BY_SCRIPT=true
             break
         fi
         sleep 1
     done
-    
-    if ! redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+
+    if ! check_redis; then
         echo -e "${RED}❌ Failed to start Redis${NC}"
+        echo -e "${YELLOW}Checking Docker logs:${NC}"
+        docker logs redis-test 2>&1 | tail -5
         exit 1
     fi
 fi
