@@ -82,21 +82,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BACKEND_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$BACKEND_DIR"
 
-if [ ! -d "venv" ]; then
-    echo -e "${RED}❌ Virtual environment not found. Please run from backend directory:${NC}"
-    echo -e "  python3 -m venv venv"
-    echo -e "  source venv/bin/activate"
-    echo -e "  pip install -r requirements.txt"
-    exit 1
-fi
+# Check if running in CI environment
+if [ -n "$CI" ] || [ -n "$GITHUB_ACTIONS" ]; then
+    echo -e "${GREEN}✅ Running in CI environment - using pre-installed dependencies${NC}\n"
+else
+    # Running locally - check for virtual environment
+    if [ ! -d "venv" ]; then
+        echo -e "${RED}❌ Virtual environment not found. Please run from backend directory:${NC}"
+        echo -e "  python3 -m venv venv"
+        echo -e "  source venv/bin/activate"
+        echo -e "  pip install -r requirements.txt"
+        exit 1
+    fi
 
-# Activate virtual environment if not already activated
-if [ -z "$VIRTUAL_ENV" ]; then
-    echo -e "${YELLOW}Activating virtual environment...${NC}"
-    source venv/bin/activate
-fi
+    # Activate virtual environment if not already activated
+    if [ -z "$VIRTUAL_ENV" ]; then
+        echo -e "${YELLOW}Activating virtual environment...${NC}"
+        source venv/bin/activate
+    fi
 
-echo -e "${GREEN}✅ Python environment ready${NC}\n"
+    echo -e "${GREEN}✅ Python environment ready${NC}\n"
+fi
 
 # Run integration tests
 echo -e "${YELLOW}[3/4] Running integration tests...${NC}"
