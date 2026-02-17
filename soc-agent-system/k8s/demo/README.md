@@ -6,8 +6,9 @@ This directory contains scripts for demonstrating the SOC Agent System running o
 
 - **`setup_demo.sh`** - Pre-demo setup script (run once before demo, takes 3-5 minutes)
 - **`run_demo.sh`** - Quick interactive demo script (for live presentation)
+- **`generate_threat_with_openai.sh`** - Generate a threat using live OpenAI API (for interviewer demo)
+- **`revert_to_mock_mode.sh`** - Revert backend to mock mode (no API costs)
 - **`teardown_demo.sh`** - Cleanup script to remove all resources
-- **`DEMO_SCRIPT.md`** - Narration script with talking points for interviews
 - **`README.md`** - This file
 
 ## 🎯 Quick Start
