@@ -76,8 +76,14 @@ fi
 
 # Check Python environment
 echo -e "${YELLOW}[2/4] Checking Python environment...${NC}"
+
+# Navigate to backend directory (script is in backend/tests/integration/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BACKEND_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+cd "$BACKEND_DIR"
+
 if [ ! -d "venv" ]; then
-    echo -e "${RED}❌ Virtual environment not found. Please run:${NC}"
+    echo -e "${RED}❌ Virtual environment not found. Please run from backend directory:${NC}"
     echo -e "  python3 -m venv venv"
     echo -e "  source venv/bin/activate"
     echo -e "  pip install -r requirements.txt"

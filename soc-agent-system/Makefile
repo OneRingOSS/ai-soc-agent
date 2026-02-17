@@ -75,7 +75,7 @@ test:
 
 test-integration:
 	@echo "🧪 Running integration tests (requires Redis)..."
-	@cd backend && bash run_integration_tests.sh
+	@cd backend && bash tests/integration/run_integration_tests.sh
 
 scan-secrets:
 	@echo "🔐 Scanning for secrets..."

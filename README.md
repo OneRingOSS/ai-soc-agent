@@ -20,6 +20,20 @@ A multi-agent Security Operations Center (SOC) system with real-time threat inte
 ![Timeline and Raw Inference](Timeline&RawInference.png)
 *Forensic timeline reconstruction with raw signal metadata and agent inference details*
 
+### Observability & Performance Monitoring
+
+![Grafana Dashboard](Grafana-Dashboard.png)
+*Pre-configured SOC Agent metrics and visualizations with Grafana*
+
+![Prometheus Dashboard](Prometheus-Dashboard.png)
+*Real-time metrics collection and querying with Prometheus*
+
+![Jaeger Performance Dashboard](Jaeger-Performance-Dashboard.png)
+*End-to-end request tracing with performance analysis using Jaeger*
+
+![Locust Performance Test Report](Locust-PerfTest-Report.png)
+*Performance testing results and load testing reports with Locust*
+
 ## 📑 Table of Contents
 
 - [Screenshots](#-screenshots)
@@ -79,16 +93,30 @@ flowchart TB
         Charts[Chart.js Visualizations]
     end
 
-    subgraph Backend["Backend (FastAPI)"]
-        API[REST API]
-        WS_Server[WebSocket Server]
-        TG[Threat Generator]
-
-        subgraph Coordinator["Coordinator Agent"]
-            CA[CoordinatorAgent]
+    subgraph K8s["Kubernetes Cluster (Multi-Pod)"]
+        subgraph Ingress["Ingress Layer"]
+            ING[Nginx Ingress<br/>:8080]
         end
 
-        subgraph Agents["Specialized Agents"]
+        subgraph Backend["Backend Pods (HPA: 2-8 replicas)"]
+            subgraph Pod1["Pod A"]
+                API1[REST API<br/>/health /ready /metrics]
+                WS1[WebSocket Server]
+                CA1[Coordinator Agent]
+            end
+
+            subgraph Pod2["Pod B"]
+                API2[REST API<br/>/health /ready /metrics]
+                WS2[WebSocket Server]
+                CA2[Coordinator Agent]
+            end
+        end
+
+        subgraph SharedState["Shared State Layer"]
+            Redis[(Redis<br/>Pub/Sub + Storage)]
+        end
+
+        subgraph Agents["Specialized Agents (All Pods)"]
             HA[Historical Agent]
             CFA[Config Agent]
             DA[DevOps Agent]
@@ -96,83 +124,134 @@ flowchart TB
             PA[Priority Agent]
         end
 
-        subgraph Data["Data Layer"]
-            MS[Mock Data Store]
-            TS[Threat Store]
+        subgraph Analyzers["Enhanced Analyzers"]
+            FPA[False Positive<br/>Analyzer]
+            RE[Response<br/>Engine]
+            TB[Timeline<br/>Builder]
         end
+    end
+
+    subgraph Observability["Observability Stack"]
+        Jaeger[Jaeger<br/>Distributed Tracing<br/>:16686]
+        Prometheus[Prometheus<br/>Metrics Collection<br/>:9090]
+        Loki[Loki<br/>Log Aggregation<br/>:3100]
+        Grafana[Grafana<br/>Dashboards<br/>:3000]
     end
 
     subgraph External["External Services"]
         OpenAI[OpenAI API]
     end
 
-    UI --> API
-    UI --> WS_Client
-    WS_Client <--> WS_Server
+    UI --> ING
+    ING --> API1 & API2
+    WS_Client <--> WS1 & WS2
     Charts --> UI
 
-    API --> CA
-    TG --> CA
-    CA --> HA & CFA & DA & CTA & PA
+    API1 & API2 --> Redis
+    WS1 & WS2 --> Redis
 
+    CA1 & CA2 --> HA & CFA & DA & CTA & PA
     HA & CFA & DA & CTA & PA --> OpenAI
-    HA & CFA & DA & CTA --> MS
 
-    CA --> TS
-    WS_Server --> TS
+    CA1 & CA2 --> FPA & RE & TB
+
+    API1 & API2 -.->|traces| Jaeger
+    API1 & API2 -.->|metrics| Prometheus
+    API1 & API2 -.->|logs| Loki
+
+    Jaeger & Prometheus & Loki --> Grafana
 
     style Frontend fill:#3b82f6,color:#fff
-    style Backend fill:#10b981,color:#fff
-    style External fill:#f59e0b,color:#fff
-    style Coordinator fill:#8b5cf6,color:#fff
+    style K8s fill:#10b981,color:#fff
+    style Backend fill:#059669,color:#fff
+    style SharedState fill:#8b5cf6,color:#fff
+    style Observability fill:#f59e0b,color:#fff
+    style External fill:#ef4444,color:#fff
     style Agents fill:#ec4899,color:#fff
+    style Analyzers fill:#06b6d4,color:#fff
 ```
 
-### Request Flow
+### Request Flow with Observability
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant User
     participant Dashboard as React Dashboard
-    participant API as FastAPI
+    participant Ingress as K8s Ingress
+    participant API as FastAPI Pod
+    participant Redis as Redis Pub/Sub
     participant Coordinator as Coordinator Agent
     participant Agents as Specialized Agents
+    participant Analyzers as FP/Response/Timeline
     participant OpenAI as OpenAI API
-    participant WS as WebSocket
+    participant Otel as OpenTelemetry
+    participant Metrics as Prometheus
+    participant Logs as Loki
 
     User->>Dashboard: Trigger Threat
-    Dashboard->>API: POST /api/threats/trigger
+    Dashboard->>Ingress: POST /api/threats/trigger
+    Ingress->>API: Route to Pod
+
+    activate API
+    API->>Otel: Start Span (trace_id)
+    API->>Logs: Log request (trace_id)
+    API->>Metrics: Increment threats_total
+
     API->>Coordinator: analyze_threat(signal)
+    activate Coordinator
+    Coordinator->>Otel: Create child spans
 
     par Parallel Agent Execution
         Coordinator->>Agents: Historical Agent
+        Agents->>Otel: Span (agent.historical)
         Agents->>OpenAI: LLM Analysis
         OpenAI-->>Agents: Response
+        Agents->>Logs: Log analysis (trace_id)
     and
         Coordinator->>Agents: Config Agent
+        Agents->>Otel: Span (agent.config)
         Agents->>OpenAI: LLM Analysis
         OpenAI-->>Agents: Response
     and
         Coordinator->>Agents: DevOps Agent
+        Agents->>Otel: Span (agent.devops)
         Agents->>OpenAI: LLM Analysis
         OpenAI-->>Agents: Response
     and
         Coordinator->>Agents: Context Agent
+        Agents->>Otel: Span (agent.context)
         Agents->>OpenAI: LLM Analysis
         OpenAI-->>Agents: Response
     and
         Coordinator->>Agents: Priority Agent
+        Agents->>Otel: Span (agent.priority)
         Agents->>OpenAI: LLM Analysis
         OpenAI-->>Agents: Response
     end
 
     Agents-->>Coordinator: AgentAnalysis results
+
+    Coordinator->>Analyzers: FP Analysis + Response + Timeline
+    Analyzers->>Otel: Span (analyzers)
+    Analyzers-->>Coordinator: Enhanced results
+
     Coordinator->>Coordinator: synthesize_analysis()
     Coordinator-->>API: ThreatAnalysis
-    API->>WS: broadcast_threat()
-    WS-->>Dashboard: new_threat message
-    Dashboard-->>User: Update UI
+    deactivate Coordinator
+
+    API->>Redis: PUBLISH threats:events
+    API->>Redis: HSET threat:{id}
+    API->>Metrics: Record analysis_duration
+    API->>Logs: Log completion (trace_id)
+    API->>Otel: End Span
+    deactivate API
+
+    Redis-->>API: Broadcast to all pods
+    API->>Dashboard: WebSocket: new_threat
+    Dashboard-->>User: Update UI (real-time)
+
+    Note over Otel,Logs: Trace correlation: logs linked to spans via trace_id
 ```
 
 ### Agent Architecture
@@ -246,7 +325,99 @@ classDiagram
     CoordinatorAgent o-- PriorityAgent
 ```
 
-> 📚 For more detailed architecture diagrams including data models, WebSocket communication, and deployment architecture, see [docs/soc-architecture.md](soc-agent-system/docs/soc-architecture.md)
+### Multi-Pod Real-Time Broadcasting
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Client1 as Browser A
+    participant Client2 as Browser B
+    participant Client3 as Browser C
+    participant PodA as FastAPI Pod A
+    participant PodB as FastAPI Pod B
+    participant PodC as FastAPI Pod C
+    participant Redis as Redis Pub/Sub
+
+    Note over Client1,PodA: Browser A connects to Pod A
+    Client1->>PodA: WebSocket Connect
+    PodA->>Redis: SUBSCRIBE threats:events
+
+    Note over Client2,PodB: Browser B connects to Pod B
+    Client2->>PodB: WebSocket Connect
+    PodB->>Redis: SUBSCRIBE threats:events
+
+    Note over Client3,PodC: Browser C connects to Pod C
+    Client3->>PodC: WebSocket Connect
+    PodC->>Redis: SUBSCRIBE threats:events
+
+    Note over Client1,Redis: User triggers threat on Pod A
+    Client1->>PodA: POST /api/threats/trigger
+    activate PodA
+    PodA->>PodA: Process threat analysis
+    PodA->>Redis: PUBLISH threats:events {threat_data}
+    PodA->>Redis: HSET threat:{id} {data}
+    deactivate PodA
+
+    Note over Redis: Redis broadcasts to ALL subscribers
+    Redis-->>PodA: Message: new_threat
+    Redis-->>PodB: Message: new_threat
+    Redis-->>PodC: Message: new_threat
+
+    Note over PodA,Client3: All pods broadcast to their WebSocket clients
+    PodA->>Client1: WebSocket: new_threat
+    PodB->>Client2: WebSocket: new_threat
+    PodC->>Client3: WebSocket: new_threat
+
+    Note over Client1,Client3: All browsers update in real-time!
+```
+
+### Observability Integration
+
+```mermaid
+flowchart LR
+    subgraph App["SOC Agent Application"]
+        API[FastAPI Pods]
+    end
+
+    subgraph Instrumentation["OpenTelemetry SDK"]
+        Tracer[Tracer Provider]
+        Meter[Meter Provider]
+        Logger[Logger Provider]
+    end
+
+    subgraph Exporters["OTLP Exporters"]
+        TraceExp[Trace Exporter<br/>:4317]
+        MetricExp[Metric Exporter<br/>:9090]
+        LogExp[Log Exporter<br/>:3100]
+    end
+
+    subgraph Backend["Observability Backend"]
+        Jaeger[Jaeger<br/>Traces]
+        Prometheus[Prometheus<br/>Metrics]
+        Loki[Loki<br/>Logs]
+    end
+
+    subgraph Visualization["Unified Dashboard"]
+        Grafana[Grafana<br/>Trace-to-Logs Correlation]
+    end
+
+    API --> Tracer & Meter & Logger
+    Tracer --> TraceExp
+    Meter --> MetricExp
+    Logger --> LogExp
+
+    TraceExp --> Jaeger
+    MetricExp --> Prometheus
+    LogExp --> Loki
+
+    Jaeger & Prometheus & Loki --> Grafana
+
+    style App fill:#3b82f6,color:#fff
+    style Instrumentation fill:#10b981,color:#fff
+    style Exporters fill:#f59e0b,color:#fff
+    style Backend fill:#8b5cf6,color:#fff
+    style Visualization fill:#ec4899,color:#fff
+```
 
 ## 📋 Prerequisites
 
@@ -466,8 +637,6 @@ All of the above PLUS:
 - ✅ **LLM interactions** - See prompts and API calls (in DEBUG mode)
 - ✅ **Synthesis process** - Watch the coordinator combine agent insights into final analysis
 - ✅ **Mode indicators** - Clear MOCK vs LIVE mode display
-
-> 📚 For more detailed logging documentation and demo scenarios, see [docs/LOGGING_DEMO.md](soc-agent-system/docs/LOGGING_DEMO.md)
 
 ## 🧪 Running Tests
 
@@ -779,7 +948,9 @@ The system includes production-grade observability:
 - **OpenTelemetry Tracing**: Distributed tracing support
 - **Health Checks**: Kubernetes-native liveness and readiness probes
 
-See `soc-agent-system/observability/` for the full observability stack (Prometheus, Grafana, Jaeger, Loki).
+See the [Screenshots](#-screenshots) section for Grafana, Prometheus, Jaeger, and Locust dashboards.
+
+For the full observability stack configuration, see `soc-agent-system/observability/` (Prometheus, Grafana, Jaeger, Loki).
 
 ### Troubleshooting
 
@@ -798,11 +969,82 @@ kubectl logs <pod-name> -n soc-agent-test
 - Check `REDIS_URL` in backend pod: `kubectl exec -n soc-agent-test <backend-pod> -- env | grep REDIS_URL`
 - Verify Redis pod is running: `kubectl get pods -n soc-agent-test -l app=redis`
 
-For more details, see:
-- [Kubernetes Deployment README](soc-agent-system/k8s/README.md)
-- [Integration Tests README](soc-agent-system/k8s/tests/README.md)
+For more details on integration tests, see [soc-agent-system/k8s/tests/README.md](soc-agent-system/k8s/tests/README.md)
 
-## 📝 Configuration
+## � Security Scanning Pipeline
+
+The project includes a comprehensive security scanning pipeline with quality gates suitable for CI/CD integration.
+
+### Quality Gates (Makefile)
+
+```bash
+cd soc-agent-system
+
+# Run all quality gates (recommended before commit)
+make quality-gate
+
+# Individual checks
+make lint              # Ruff linter (Python code quality)
+make test              # Unit tests (35 tests, 68% coverage, ~1.5s)
+make scan-secrets      # TruffleHog secret scanning
+make scan-container    # Trivy container vulnerability scanning
+
+# Integration tests (requires Redis)
+make test-integration  # 5 Redis pub/sub tests
+
+# Full pipeline
+make all               # quality-gate + scan-container
+```
+
+### Security Tools
+
+| Tool | Version | Purpose | Configuration |
+|------|---------|---------|---------------|
+| **ruff** | 0.15.1 | Python linter & formatter | `pyproject.toml` |
+| **pytest** | Latest | Unit & integration tests | 60%+ coverage required |
+| **TruffleHog** | 3.93.3 | Secret scanning | `.trufflehog-exclude.txt` |
+| **Trivy** | 0.69.1 | Container vulnerability scanning | Scans backend/frontend images |
+
+### Test Architecture
+
+**Unit Tests** (35 tests):
+- ✅ No external dependencies (Redis, OpenAI)
+- ✅ Fast execution (~1.5 seconds)
+- ✅ 68% code coverage
+- ✅ Run in quality gate
+
+**Integration Tests** (5 tests):
+- ✅ Redis Pub/Sub validation
+- ✅ Cross-pod state sharing
+- ✅ Requires Redis running
+- ✅ Run separately with `make test-integration`
+
+### CI/CD Integration
+
+Add to your CI pipeline:
+
+```yaml
+# Example GitHub Actions
+- name: Run Quality Gates
+  run: |
+    cd soc-agent-system
+    make quality-gate
+
+- name: Scan Containers
+  run: |
+    cd soc-agent-system
+    make scan-container
+```
+
+### Quality Gate Results
+
+All checks must pass:
+- ✅ **Linting**: No ruff violations
+- ✅ **Tests**: 35/35 passing, 68% coverage
+- ✅ **Secrets**: No exposed credentials
+- ✅ **Containers**: No HIGH/CRITICAL vulnerabilities
+
+## �📝 Configuration
 
 ### Backend Environment Variables
 
