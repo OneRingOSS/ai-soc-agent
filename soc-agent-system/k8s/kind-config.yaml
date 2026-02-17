@@ -1,0 +1,25 @@
+# Kind cluster configuration for SOC Agent System
+# Creates a 3-node cluster: 1 control-plane + 2 workers
+# Port mappings: 80→8080 (HTTP), 443→8443 (HTTPS)
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    labels:
+      ingress-ready: "true"
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      - containerPort: 80
+        hostPort: 8080
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+  - role: worker
+  - role: worker
+

@@ -1,7 +1,7 @@
 """Threat signal generator - simulates inference engine output."""
 import random
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional
+from typing import Optional
 from models import ThreatSignal, ThreatType
 
 

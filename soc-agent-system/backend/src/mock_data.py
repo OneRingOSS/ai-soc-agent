@@ -1,6 +1,6 @@
 """Mock data stores for SOC Agent System."""
 from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from typing import List, Dict
 import random
 from models import (
     HistoricalIncident, CustomerConfig, InfraEvent, 

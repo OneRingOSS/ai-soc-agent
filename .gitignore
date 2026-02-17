@@ -141,3 +141,18 @@ $RECYCLE.BIN/
 .DS_Store
 Thumbs.db
 
+# Load Testing Reports (should be GitHub Actions artifacts, not committed)
+soc-agent-system/demo/loadtest-*.html
+soc-agent-system/demo/loadtest-*.csv
+soc-agent-system/demo/*_stats.csv
+soc-agent-system/demo/*_stats_history.csv
+soc-agent-system/demo/*_failures.csv
+soc-agent-system/demo/*_exceptions.csv
+soc-agent-system/loadtests/reports/
+soc-agent-system/loadtests/*.html
+soc-agent-system/loadtests/*.csv
+
+# K8s Demo Load Test Artifacts
+soc-agent-system/k8s/demo/k8s-demo-*.html
+soc-agent-system/k8s/demo/k8s-demo-*.csv
+

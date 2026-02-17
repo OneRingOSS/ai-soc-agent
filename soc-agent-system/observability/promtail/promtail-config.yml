@@ -1,0 +1,80 @@
+# =============================================================================
+# Promtail Configuration — SOC Agent System
+# =============================================================================
+# Tails JSON-formatted log files from the shared logs/ volume.
+# Parses structured fields: timestamp, level, logger_name, module,
+#   trace_id, span_id, message
+#
+# The trace_id label enables Grafana's trace-to-logs correlation:
+#   clicking a Jaeger trace jumps directly to matching log lines.
+# =============================================================================
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+# Where Promtail stores its read positions (bookmarks)
+positions:
+  filename: /tmp/positions.yaml
+
+# Push logs to Loki
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: soc-agent-logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: soc-agent
+          service: soc-agent-system
+          # Path to the log file inside the container
+          __path__: /var/log/soc-agent/*.log
+
+    pipeline_stages:
+      # -----------------------------------------------------------------------
+      # Stage 1: Parse the entire log line as JSON
+      # This extracts all top-level keys into the extracted map
+      # -----------------------------------------------------------------------
+      - json:
+          expressions:
+            timestamp: timestamp
+            level: level
+            logger_name: logger_name
+            module: module
+            trace_id: trace_id
+            span_id: span_id
+            message: message
+
+      # -----------------------------------------------------------------------
+      # Stage 2: Use the extracted timestamp as the log entry timestamp
+      # Format matches Python's ISO 8601 output with UTC 'Z' suffix
+      # -----------------------------------------------------------------------
+      - timestamp:
+          source: timestamp
+          format: "2006-01-02T15:04:05Z"
+          fallback_formats:
+            - "2006-01-02T15:04:05.000000Z"
+            - "2006-01-02T15:04:05.000Z"
+            - "2006-01-02T15:04:05"
+
+      # -----------------------------------------------------------------------
+      # Stage 3: Promote extracted fields to Loki labels
+      # trace_id and span_id enable trace-to-logs correlation in Grafana
+      # level enables filtering by log severity
+      # -----------------------------------------------------------------------
+      - labels:
+          level:
+          logger_name:
+          module:
+          trace_id:
+          span_id:
+
+      # -----------------------------------------------------------------------
+      # Stage 4: Set the log line output to the extracted message field
+      # This keeps log lines clean in Grafana's Explore view
+      # -----------------------------------------------------------------------
+      - output:
+          source: message
+

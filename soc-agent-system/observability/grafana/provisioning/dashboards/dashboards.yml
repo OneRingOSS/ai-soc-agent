@@ -1,0 +1,25 @@
+# =============================================================================
+# Grafana Dashboard Provisioning — SOC Agent System
+# =============================================================================
+# Tells Grafana where to find dashboard JSON files on startup.
+# Dashboards are loaded from /var/lib/grafana/dashboards (mapped from
+# ./grafana/dashboards in docker-compose.yml).
+#
+# updateIntervalSeconds: how often Grafana checks for new/updated dashboards
+# allowUiUpdates: false — dashboards are managed as code, not via UI
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+  - name: "SOC Agent Dashboards"
+    orgId: 1
+    folder: "SOC Agent System"
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
+
