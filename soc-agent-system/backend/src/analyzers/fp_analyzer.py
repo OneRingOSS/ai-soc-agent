@@ -145,7 +145,7 @@ class FalsePositiveAnalyzer:
                 return FalsePositiveIndicator(
                     indicator=f"Known benign IP range: {benign_prefix}*",
                     weight=0.5,  # Strong FP indicator
-                    description=f"IP belongs to known benign service provider",
+                    description="IP belongs to known benign service provider",
                     source="FP Analyzer - IP Check"
                 )
 
@@ -187,7 +187,6 @@ class FalsePositiveAnalyzer:
 
         # Count resolution types
         fp_count = sum(1 for i in similar_incidents if i.resolved_as == "false_positive")
-        tp_count = sum(1 for i in similar_incidents if i.resolved_as == "true_positive")
         total = len(similar_incidents)
 
         if total > 0:

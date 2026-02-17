@@ -1,0 +1,7 @@
+# Exclude local development environment files (regex patterns)
+.*\.env$
+.*\.env\.local$
+.*venv/.*
+.*node_modules/.*
+.*\.git/.*
+
