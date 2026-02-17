@@ -1,16 +1,30 @@
 """Configuration management for SOC Agent System."""
 import os
-from typing import Optional
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from pydantic import Field
+from dotenv import load_dotenv
+
+# Load .env file from backend directory (but NOT during testing)
+# This prevents tests from accidentally using real OpenAI API
+if not os.getenv("TESTING"):
+    backend_dir = Path(__file__).parent.parent
+    env_file = backend_dir / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # API Keys
     openai_api_key: str = Field(default="", env="OPENAI_API_KEY")
-    
+
+    # Mock Mode Override
+    # When set to "1" or "true", forces mock mode even if OPENAI_API_KEY is set
+    # Useful for load testing without incurring API costs
+    force_mock_mode: str = Field(default="", env="FORCE_MOCK_MODE")
+
     # Server Configuration
     host: str = Field(default="0.0.0.0", env="HOST")
     port: int = Field(default=8000, env="PORT")
@@ -21,8 +35,12 @@ class Settings(BaseSettings):
     )
     
     # Threat Generation
+    enable_auto_threat_generation: bool = Field(default=False, env="ENABLE_AUTO_THREAT_GENERATION")
     threat_generation_interval: int = Field(default=30, env="THREAT_GENERATION_INTERVAL")
     max_stored_threats: int = Field(default=100, env="MAX_STORED_THREATS")
+
+    # Redis Configuration
+    redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
 
     # LLM Configuration
     llm_model: str = Field(default="gpt-4o-mini", env="LLM_MODEL")
@@ -30,9 +48,20 @@ class Settings(BaseSettings):
     llm_max_tokens: int = Field(default=1000, env="LLM_MAX_TOKENS")
     llm_timeout: int = Field(default=30, env="LLM_TIMEOUT")
 
+    def should_use_mock(self) -> bool:
+        """Determine if mock mode should be used.
+
+        Returns True if:
+        - FORCE_MOCK_MODE is set to "1" or "true" (case-insensitive), OR
+        - OPENAI_API_KEY is not set or empty
+        """
+        if self.force_mock_mode.lower() in ("1", "true"):
+            return True
+        return not self.openai_api_key
+
     class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+        # Don't auto-load .env file here - we handle it manually above
+        # to prevent loading during tests (when TESTING=1)
         extra = "ignore"  # Ignore extra fields in .env file
 
 

@@ -43,6 +43,15 @@ A multi-agent Security Operations Center (SOC) system with real-time threat inte
 - [Running Tests](#-running-tests)
   - [Backend Tests](#backend-tests)
   - [Frontend Tests](#frontend-tests)
+- [Kubernetes Deployment](#-kubernetes-deployment)
+  - [Prerequisites](#prerequisites-1)
+  - [Quick Start with Kind](#quick-start-with-kind-local-testing)
+  - [Helm Chart Configuration](#helm-chart-configuration)
+  - [Custom Deployment](#custom-deployment)
+  - [Integration Tests](#integration-tests)
+  - [Architecture Highlights](#architecture-highlights)
+  - [Monitoring and Observability](#monitoring-and-observability)
+  - [Troubleshooting](#troubleshooting-1)
 - [Troubleshooting](#-troubleshooting)
 - [Using the Dashboard](#-using-the-dashboard)
 - [API Endpoints](#-api-endpoints)
@@ -605,6 +614,193 @@ Click one of the trigger buttons:
 - Chart.js 4.4.1
 - react-chartjs-2 5.2.0
 - Axios 1.6.5
+
+## 🚀 Kubernetes Deployment
+
+The SOC Agent System includes production-ready Kubernetes deployment with Helm charts, comprehensive integration tests, and observability stack.
+
+### Prerequisites
+
+- **kubectl** - Kubernetes command-line tool
+- **helm** - Kubernetes package manager (v3+)
+- **kind** - Kubernetes in Docker (for local testing)
+- **docker** - Container runtime
+
+Install prerequisites on macOS:
+```bash
+brew install kubectl helm kind
+```
+
+### Quick Start with Kind (Local Testing)
+
+1. **Create Kind cluster and deploy:**
+```bash
+cd soc-agent-system/k8s
+./deploy.sh
+```
+
+This script will:
+- Create a 3-node Kind cluster
+- Build Docker images for backend and frontend
+- Load images into Kind cluster
+- Deploy the Helm chart with Redis enabled
+- Wait for all pods to be ready
+
+2. **Access the application:**
+```bash
+# Port-forward to access the frontend
+kubectl port-forward -n soc-agent-test service/soc-agent-test-frontend 8080:80
+
+# Access the dashboard at http://localhost:8080
+```
+
+3. **Run integration tests:**
+```bash
+cd soc-agent-system/k8s/tests
+./integration_test.sh      # Deployment and health checks (9 tests)
+./test_connectivity.sh     # E2E connectivity tests (10 tests)
+```
+
+4. **Cleanup:**
+```bash
+cd soc-agent-system/k8s
+./teardown.sh
+kind delete cluster --name soc-agent-cluster
+```
+
+### Helm Chart Configuration
+
+The Helm chart is located in `soc-agent-system/k8s/charts/soc-agent/` and supports:
+
+- **Backend**: 2 replicas (default), HPA enabled (2-8 replicas based on 70% CPU)
+- **Frontend**: 1 replica with nginx serving React app
+- **Redis**: Single instance for cross-pod state sharing (optional, enabled by default)
+- **Ingress**: Optional ingress controller support
+- **Health Probes**: Liveness (`/health`) and readiness (`/ready`) checks
+
+**Key configuration values** (`values.yaml`):
+```yaml
+backend:
+  replicas: 2
+  image:
+    repository: soc-backend
+    tag: latest
+    pullPolicy: Never  # For Kind, use IfNotPresent for real clusters
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+
+frontend:
+  replicas: 1
+  image:
+    repository: soc-frontend
+    tag: latest
+    pullPolicy: Never
+
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: 7-alpine
+```
+
+### Custom Deployment
+
+Deploy to an existing Kubernetes cluster:
+
+```bash
+# Build and push images to your registry
+docker build -t your-registry/soc-backend:v1.0 soc-agent-system/backend
+docker build -t your-registry/soc-frontend:v1.0 soc-agent-system/frontend
+docker push your-registry/soc-backend:v1.0
+docker push your-registry/soc-frontend:v1.0
+
+# Deploy with Helm
+helm install soc-agent soc-agent-system/k8s/charts/soc-agent \
+  --namespace soc-agent \
+  --create-namespace \
+  --set backend.image.repository=your-registry/soc-backend \
+  --set backend.image.tag=v1.0 \
+  --set backend.image.pullPolicy=IfNotPresent \
+  --set frontend.image.repository=your-registry/soc-frontend \
+  --set frontend.image.tag=v1.0 \
+  --set frontend.image.pullPolicy=IfNotPresent \
+  --set redis.enabled=true
+```
+
+### Integration Tests
+
+The test suite validates:
+
+**Integration Tests** (`integration_test.sh`):
+- ✅ Prerequisites (kubectl, helm, kind)
+- ✅ Helm chart deployment
+- ✅ Pod readiness (backend, frontend, redis)
+- ✅ Service existence
+- ✅ Backend health endpoint
+
+**Connectivity Tests** (`test_connectivity.sh`):
+- ✅ Backend API endpoints (`/health`, `/ready`, `/metrics`, `/api/threats`)
+- ✅ Frontend accessibility
+- ✅ E2E threat creation and retrieval
+- ✅ Redis connectivity from backend pods
+
+**Run all tests:**
+```bash
+cd soc-agent-system/k8s/tests
+./integration_test.sh && ./test_connectivity.sh
+```
+
+### Architecture Highlights
+
+**Dynamic Backend URL Configuration:**
+- Frontend nginx uses environment variables (`BACKEND_HOST`, `BACKEND_PORT`)
+- Works seamlessly in both Docker Compose and Kubernetes
+- Helm chart automatically sets correct service names
+
+**Redis Pub/Sub for Multi-Pod State:**
+- Backend uses Redis for cross-pod threat storage
+- Pub/Sub broadcasts threat updates to all replicas
+- Falls back to in-memory store if Redis unavailable
+
+**Horizontal Pod Autoscaling:**
+- Automatically scales backend pods (2-8 replicas)
+- Based on CPU utilization (70% target)
+- Handles traffic spikes gracefully
+
+### Monitoring and Observability
+
+The system includes production-grade observability:
+
+- **Prometheus Metrics**: `/metrics` endpoint on backend
+- **Structured JSON Logging**: Loki-compatible logs
+- **OpenTelemetry Tracing**: Distributed tracing support
+- **Health Checks**: Kubernetes-native liveness and readiness probes
+
+See `soc-agent-system/observability/` for the full observability stack (Prometheus, Grafana, Jaeger, Loki).
+
+### Troubleshooting
+
+**Pods not starting:**
+```bash
+kubectl get pods -n soc-agent-test
+kubectl describe pod <pod-name> -n soc-agent-test
+kubectl logs <pod-name> -n soc-agent-test
+```
+
+**Frontend can't reach backend:**
+- Check `BACKEND_HOST` and `BACKEND_PORT` environment variables in frontend pod
+- Verify backend service exists: `kubectl get svc -n soc-agent-test`
+
+**Redis connection issues:**
+- Check `REDIS_URL` in backend pod: `kubectl exec -n soc-agent-test <backend-pod> -- env | grep REDIS_URL`
+- Verify Redis pod is running: `kubectl get pods -n soc-agent-test -l app=redis`
+
+For more details, see:
+- [Kubernetes Deployment README](soc-agent-system/k8s/README.md)
+- [Integration Tests README](soc-agent-system/k8s/tests/README.md)
 
 ## 📝 Configuration
 
