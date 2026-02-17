@@ -1,7 +1,6 @@
 """Configuration management for SOC Agent System."""
 import os
 from pathlib import Path
-from typing import Optional
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from dotenv import load_dotenv

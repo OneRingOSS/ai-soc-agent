@@ -6,7 +6,7 @@ agent execution times, false positive scores, and other business metrics.
 """
 import logging
 from typing import Dict, Any
-from prometheus_client import Counter, Histogram, Gauge, CollectorRegistry, REGISTRY
+from prometheus_client import Counter, Histogram, Gauge, REGISTRY
 from prometheus_fastapi_instrumentator import Instrumentator
 
 logger = logging.getLogger(__name__)

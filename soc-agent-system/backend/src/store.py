@@ -1,5 +1,4 @@
 """Threat storage abstraction with Redis and in-memory implementations."""
-import json
 import asyncio
 import logging
 from typing import Optional, List, AsyncGenerator

@@ -1,9 +1,8 @@
 """FastAPI application for SOC Agent System."""
 import asyncio
 import json
-import logging
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Query
@@ -11,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from config import settings
-from models import ThreatAnalysis, ThreatSignal, DashboardMetrics, ThreatType
+from models import ThreatAnalysis, DashboardMetrics, ThreatType
 from threat_generator import threat_generator
 from agents.coordinator import create_coordinator
 from logger import setup_json_logging, get_logger
@@ -45,7 +44,7 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 SOC Agent System starting up...")
     use_mock = settings.should_use_mock()
     if settings.force_mock_mode.lower() in ("1", "true"):
-        logger.info(f"   Mode: MOCK (forced via FORCE_MOCK_MODE)")
+        logger.info("   Mode: MOCK (forced via FORCE_MOCK_MODE)")
     else:
         logger.info(f"   Mode: {'MOCK (no OpenAI API)' if use_mock else 'LIVE (OpenAI API enabled)'}")
     logger.info(f"   Host: {settings.host}:{settings.port}")

@@ -8,7 +8,7 @@ from openai import AsyncOpenAI
 from config import settings
 from models import (
     ThreatSignal, ThreatAnalysis, AgentAnalysis,
-    ThreatSeverity, MITRETactic, MITRETechnique, ThreatStatus
+    ThreatSeverity, ThreatStatus
 )
 from mock_data import MockDataStore
 from agents.historical_agent import HistoricalAgent
@@ -96,7 +96,7 @@ class CoordinatorAgent:
             logger.info(f"   ✓ Config: Retrieved settings for {signal.customer_name}")
             logger.info(f"   ✓ DevOps: {len(contexts['devops'].get('infra_events', []))} recent infrastructure events")
             logger.info(f"   ✓ Context: {len(contexts['context'].get('news_items', []))} relevant news items")
-            logger.info(f"   ✓ Priority: Context prepared for classification")
+            logger.info("   ✓ Priority: Context prepared for classification")
 
             # Determine analysis method
             analyze_method = "analyze_mock" if self.use_mock else "analyze"
@@ -208,7 +208,7 @@ class CoordinatorAgent:
             record_fp_score(fp_score.score)
             record_processing_phase("total", total_time / 1000.0)
 
-            logger.info(f"\n✅ ANALYSIS COMPLETE")
+            logger.info("\n✅ ANALYSIS COMPLETE")
             logger.info(f"   Severity: {final_analysis.severity.value}")
             logger.info(f"   Total Processing Time: {total_time}ms")
             logger.info(f"   Requires Human Review: {final_analysis.requires_human_review}")

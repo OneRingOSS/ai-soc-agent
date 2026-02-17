@@ -1,7 +1,6 @@
 """Logging configuration for different verbosity levels."""
 import logging
 import sys
-from typing import Optional
 
 
 class ColoredFormatter(logging.Formatter):

@@ -1,6 +1,6 @@
 """Response Action Engine - Determines appropriate response actions."""
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, List, Optional
 
 from models import (
     ThreatSignal, ThreatSeverity, ThreatType, FalsePositiveScore,
