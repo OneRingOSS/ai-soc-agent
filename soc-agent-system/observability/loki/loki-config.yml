@@ -1,0 +1,51 @@
+# =============================================================================
+# Loki Configuration — SOC Agent System
+# =============================================================================
+# Single-instance Loki for local development.
+# Stores log chunks and index on the local filesystem (/loki).
+# Schema v13 with TSDB index — recommended for Loki 2.9+.
+# =============================================================================
+
+auth_enabled: false  # No multi-tenancy needed for local dev
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    instance_addr: 0.0.0.0
+    kvstore:
+      store: inmemory
+
+# Schema defines how Loki indexes and stores log data
+schema_config:
+  configs:
+    - from: "2024-01-01"
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+# Query limits and retention
+limits_config:
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h   # 7 days
+  ingestion_rate_mb: 10
+  ingestion_burst_size_mb: 20
+
+# Compactor handles index compaction and optional retention enforcement
+compactor:
+  working_directory: /loki/compactor
+
+analytics:
+  reporting_enabled: false
+
