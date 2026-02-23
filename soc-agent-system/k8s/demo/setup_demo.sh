@@ -186,23 +186,47 @@ echo ""
 log_section "Step 6: Verifying Deployment"
 echo ""
 
-log_info "Waiting for all pods to be ready..."
-kubectl wait --for=condition=ready pod \
-    -l app=soc-backend \
-    -n "$NAMESPACE" \
-    --timeout=120s
-
-kubectl wait --for=condition=ready pod \
-    -l app=soc-frontend \
-    -n "$NAMESPACE" \
-    --timeout=60s
-
+log_info "Waiting for Redis to be ready first..."
 kubectl wait --for=condition=ready pod \
     -l app=redis \
     -n "$NAMESPACE" \
     --timeout=60s
 
+log_success "Redis is ready"
+
+# Give Redis a moment to fully initialize and accept connections
+log_info "Waiting for Redis to accept connections (5s)..."
+sleep 5
+
+log_info "Waiting for frontend to be ready..."
+kubectl wait --for=condition=ready pod \
+    -l app=soc-frontend \
+    -n "$NAMESPACE" \
+    --timeout=60s
+
+log_success "Frontend is ready"
+
+log_info "Waiting for backend pods to be ready..."
+kubectl wait --for=condition=ready pod \
+    -l app=soc-backend \
+    -n "$NAMESPACE" \
+    --timeout=120s
+
 log_success "All pods are ready"
+
+# Verify Redis connectivity from backend
+log_info "Verifying Redis connectivity from backend..."
+sleep 2  # Give backend a moment to establish connection
+
+REDIS_CHECK=$(kubectl logs -n "$NAMESPACE" -l app=soc-backend --tail=50 | grep -c "Redis connection successful" || echo "0")
+if [ "$REDIS_CHECK" -gt 0 ]; then
+    log_success "Backend successfully connected to Redis"
+else
+    log_warning "Backend may not be connected to Redis - checking logs..."
+    kubectl logs -n "$NAMESPACE" -l app=soc-backend --tail=10 | grep -i redis
+    log_info "If you see Redis connection errors, restart backend: kubectl rollout restart deployment/soc-agent-backend -n $NAMESPACE"
+fi
+
 echo ""
 
 # Show deployment status
@@ -224,17 +248,21 @@ echo ""
 log_info "Testing backend health endpoint via Ingress..."
 sleep 5  # Give ingress a moment to update
 
-if curl -s -H "Host: soc-agent.local" "http://localhost:8080/health" | grep -q "healthy"; then
+if curl -s "http://localhost:8080/health" | grep -q "healthy"; then
     log_success "Backend health check passed"
 else
-    log_warning "Backend health check failed (may need a moment to stabilize)"
+    log_error "Backend health check failed"
+    log_info "Troubleshooting: curl http://localhost:8080/health"
+    exit 1
 fi
 
 log_info "Testing frontend via Ingress..."
-if curl -s -H "Host: soc-agent.local" "http://localhost:8080/" | grep -q "<!DOCTYPE html>"; then
+if curl -s "http://localhost:8080/" | grep -q "<!DOCTYPE html>"; then
     log_success "Frontend is accessible"
 else
-    log_warning "Frontend check failed (may need a moment to stabilize)"
+    log_error "Frontend check failed"
+    log_info "Troubleshooting: curl http://localhost:8080/"
+    exit 1
 fi
 
 echo ""
@@ -245,14 +273,32 @@ echo ""
 log_section "Step 8: Pre-populating Demo Data"
 echo ""
 
-log_info "Creating a few sample threats for demo..."
-for i in {1..5}; do
-    curl -s -X POST -H "Host: soc-agent.local" "http://localhost:8080/api/threats/trigger" \
+log_info "Creating sample threats for demo..."
+
+# Create diverse threat types
+THREAT_TYPES=("bot_traffic" "proxy_network" "device_compromise" "geo_anomaly" "rate_limit_breach")
+CREATED=0
+
+for threat_type in "${THREAT_TYPES[@]}"; do
+    RESPONSE=$(curl -s -X POST "http://localhost:8080/api/threats/trigger" \
         -H "Content-Type: application/json" \
-        -d '{"threat_type": "bot_traffic"}' > /dev/null
+        -d "{\"threat_type\": \"$threat_type\"}")
+
+    if echo "$RESPONSE" | grep -q '"id"'; then
+        CREATED=$((CREATED + 1))
+        log_info "  ✓ Created $threat_type threat"
+    else
+        log_warning "  ✗ Failed to create $threat_type threat"
+    fi
+    sleep 0.5
 done
 
-log_success "Created 5 sample threats"
+log_success "Created $CREATED sample threats"
+
+# Verify threats are stored
+THREAT_COUNT=$(curl -s "http://localhost:8080/api/threats" | jq 'length' 2>/dev/null || echo "0")
+log_info "Total threats in system: $THREAT_COUNT"
+
 echo ""
 
 # ─────────────────────────────────────────────────
@@ -263,27 +309,33 @@ echo ""
 log_success "Your K8s demo environment is ready!"
 echo ""
 echo "📋 What was set up:"
-echo "  ✅ Kind cluster: $CLUSTER_NAME"
+echo "  ✅ Kind cluster: $CLUSTER_NAME (3 nodes)"
 echo "  ✅ Namespace: $NAMESPACE"
 echo "  ✅ Nginx Ingress Controller"
 echo "  ✅ SOC Agent System (backend, frontend, Redis)"
 echo "  ✅ HPA configured (2-8 replicas)"
-echo "  ✅ Sample threats pre-populated"
+echo "  ✅ Redis state management (verified connectivity)"
+echo "  ✅ Sample threats pre-populated ($THREAT_COUNT threats)"
 echo ""
-echo "🚀 Next Steps:"
-echo "  1. Review the deployment:"
-echo "     kubectl get all -n $NAMESPACE"
+echo "🚀 Access the Application:"
+echo "  🌐 Web UI:    http://localhost:8080"
+echo "  🔍 Health:    curl http://localhost:8080/health"
+echo "  📊 API:       curl http://localhost:8080/api/threats"
 echo ""
-echo "  2. Access the application:"
-echo "     curl -H \"Host: soc-agent.local\" http://localhost:8080/"
-echo "     (or add '127.0.0.1 soc-agent.local' to /etc/hosts and visit http://soc-agent.local:8080)"
+echo "🛠️  Useful Commands:"
+echo "  • View all resources:    kubectl get all -n $NAMESPACE"
+echo "  • View backend logs:     kubectl logs -n $NAMESPACE -l app=soc-backend --tail=50"
+echo "  • Create test threat:    curl -X POST http://localhost:8080/api/threats/trigger \\"
+echo "                             -H 'Content-Type: application/json' \\"
+echo "                             -d '{\"threat_type\": \"bot_traffic\"}'"
+echo "  • Restart backend:       kubectl rollout restart deployment/soc-agent-backend -n $NAMESPACE"
 echo ""
-echo "  3. When ready for your demo, run:"
-echo "     bash soc-agent-system/k8s/demo/run_demo.sh"
-echo ""
-echo "  4. After the demo, clean up with:"
-echo "     bash soc-agent-system/k8s/demo/teardown_demo.sh"
+echo "📚 Demo Scripts:"
+echo "  • Run full demo:         bash soc-agent-system/k8s/demo/run_demo.sh"
+echo "  • OpenAI live demo:      bash soc-agent-system/k8s/demo/generate_threat_with_openai.sh"
+echo "  • Teardown:              bash soc-agent-system/k8s/demo/teardown_demo.sh"
 echo ""
 log_info "The environment will remain running until you tear it down."
+log_info "Open http://localhost:8080 in your browser to see the dashboard!"
 echo ""
 
