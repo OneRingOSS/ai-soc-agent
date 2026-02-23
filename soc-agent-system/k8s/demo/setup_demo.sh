@@ -155,7 +155,7 @@ log_success "Nginx ingress controller ready"
 echo ""
 
 # ─────────────────────────────────────────────────
-# Step 5: Deploy SOC Agent System
+# Step 5: Deploy SOC Agent System (Sequential)
 # ─────────────────────────────────────────────────
 log_section "Step 5: Deploying SOC Agent System"
 echo ""
@@ -163,48 +163,60 @@ echo ""
 # Create namespace
 kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - || true
 log_success "Namespace '$NAMESPACE' created"
+echo ""
 
-# Deploy with Helm
-log_info "Deploying SOC Agent with Helm..."
+# ─────────────────────────────────────────────────
+# Step 5a: Deploy Redis First
+# ─────────────────────────────────────────────────
+log_info "[1/3] Deploying Redis..."
 helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
     --namespace "$NAMESPACE" \
-    --set backend.hpa.enabled=true \
-    --set backend.hpa.minReplicas=2 \
-    --set backend.hpa.maxReplicas=8 \
+    --set backend.enabled=false \
+    --set frontend.enabled=false \
     --set redis.enabled=true \
-    --set ingress.enabled=true \
-    --set ingress.host=soc-agent.local \
-    --set observability.enabled=true \
-    --wait --timeout=300s
+    --set ingress.enabled=false \
+    --wait --timeout=120s
 
-log_success "SOC Agent deployed"
-echo ""
+log_success "Redis deployed"
 
-# ─────────────────────────────────────────────────
-# Step 6: Verify Deployment
-# ─────────────────────────────────────────────────
-log_section "Step 6: Verifying Deployment"
-echo ""
-
-log_info "Waiting for Redis to be ready first..."
+log_info "Waiting for Redis pod to be ready..."
 kubectl wait --for=condition=ready pod \
     -l app=redis \
     -n "$NAMESPACE" \
     --timeout=60s
 
-log_success "Redis is ready"
+log_success "Redis pod is ready"
 
-# Give Redis a moment to fully initialize and accept connections
-log_info "Waiting for Redis to accept connections (5s)..."
-sleep 5
+# Test Redis connectivity
+log_info "Testing Redis connectivity..."
+sleep 3  # Give Redis a moment to fully initialize
 
-log_info "Waiting for frontend to be ready..."
-kubectl wait --for=condition=ready pod \
-    -l app=soc-frontend \
-    -n "$NAMESPACE" \
-    --timeout=60s
+REDIS_POD=$(kubectl get pod -n "$NAMESPACE" -l app=redis -o jsonpath='{.items[0].metadata.name}')
+if kubectl exec -n "$NAMESPACE" "$REDIS_POD" -- redis-cli ping | grep -q "PONG"; then
+    log_success "Redis is accepting connections (PING -> PONG)"
+else
+    log_error "Redis is not responding to PING"
+    exit 1
+fi
 
-log_success "Frontend is ready"
+echo ""
+
+# ─────────────────────────────────────────────────
+# Step 5b: Deploy Backend
+# ─────────────────────────────────────────────────
+log_info "[2/3] Deploying Backend (with HPA)..."
+helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
+    --namespace "$NAMESPACE" \
+    --set backend.enabled=true \
+    --set backend.hpa.enabled=true \
+    --set backend.hpa.minReplicas=2 \
+    --set backend.hpa.maxReplicas=8 \
+    --set frontend.enabled=false \
+    --set redis.enabled=true \
+    --set ingress.enabled=false \
+    --wait --timeout=120s
+
+log_success "Backend deployed"
 
 log_info "Waiting for backend pods to be ready..."
 kubectl wait --for=condition=ready pod \
@@ -212,21 +224,80 @@ kubectl wait --for=condition=ready pod \
     -n "$NAMESPACE" \
     --timeout=120s
 
-log_success "All pods are ready"
+log_success "Backend pods are ready"
 
-# Verify Redis connectivity from backend
-log_info "Verifying Redis connectivity from backend..."
-sleep 2  # Give backend a moment to establish connection
+# Test backend Redis connectivity
+log_info "Verifying backend connected to Redis..."
+sleep 3  # Give backend time to establish connection
 
 REDIS_CHECK=$(kubectl logs -n "$NAMESPACE" -l app=soc-backend --tail=50 | grep -c "Redis connection successful" || echo "0")
 if [ "$REDIS_CHECK" -gt 0 ]; then
     log_success "Backend successfully connected to Redis"
 else
-    log_warning "Backend may not be connected to Redis - checking logs..."
-    kubectl logs -n "$NAMESPACE" -l app=soc-backend --tail=10 | grep -i redis
-    log_info "If you see Redis connection errors, restart backend: kubectl rollout restart deployment/soc-agent-backend -n $NAMESPACE"
+    log_error "Backend failed to connect to Redis"
+    kubectl logs -n "$NAMESPACE" -l app=soc-backend --tail=20 | grep -i redis
+    exit 1
 fi
 
+echo ""
+
+# ─────────────────────────────────────────────────
+# Step 5c: Deploy Frontend and Ingress
+# ─────────────────────────────────────────────────
+log_info "[3/3] Deploying Frontend and Ingress..."
+helm upgrade --install "$RELEASE_NAME" "$CHART_PATH" \
+    --namespace "$NAMESPACE" \
+    --set backend.enabled=true \
+    --set backend.hpa.enabled=true \
+    --set backend.hpa.minReplicas=2 \
+    --set backend.hpa.maxReplicas=8 \
+    --set frontend.enabled=true \
+    --set redis.enabled=true \
+    --set ingress.enabled=true \
+    --set ingress.host=localhost \
+    --set observability.enabled=true \
+    --wait --timeout=120s
+
+log_success "Frontend and Ingress deployed"
+
+log_info "Waiting for frontend pod to be ready..."
+kubectl wait --for=condition=ready pod \
+    -l app=soc-frontend \
+    -n "$NAMESPACE" \
+    --timeout=60s
+
+log_success "Frontend pod is ready"
+
+# Test frontend
+log_info "Testing frontend accessibility..."
+sleep 3  # Give ingress a moment to update
+
+if curl -s "http://localhost:8080/" | grep -q "<!DOCTYPE html>"; then
+    log_success "Frontend is accessible via ingress"
+else
+    log_error "Frontend is not accessible"
+    exit 1
+fi
+
+log_success "All components deployed successfully"
+echo ""
+
+# ─────────────────────────────────────────────────
+# Step 6: Show Deployment Status
+# ─────────────────────────────────────────────────
+log_section "Step 6: Deployment Status"
+echo ""
+
+log_info "All pods:"
+kubectl get pods -n "$NAMESPACE"
+echo ""
+
+log_info "All services:"
+kubectl get svc -n "$NAMESPACE"
+echo ""
+
+log_info "Ingress:"
+kubectl get ingress -n "$NAMESPACE"
 echo ""
 
 # Show deployment status
@@ -240,28 +311,19 @@ kubectl get ingress -n "$NAMESPACE"
 echo ""
 
 # ─────────────────────────────────────────────────
-# Step 7: Test Connectivity
+# Step 7: Test Backend API
 # ─────────────────────────────────────────────────
-log_section "Step 7: Testing Connectivity"
+log_section "Step 7: Testing Backend API"
 echo ""
 
-log_info "Testing backend health endpoint via Ingress..."
-sleep 5  # Give ingress a moment to update
-
-if curl -s "http://localhost:8080/health" | grep -q "healthy"; then
+log_info "Testing backend health endpoint..."
+HEALTH_RESPONSE=$(curl -s "http://localhost:8080/health")
+if echo "$HEALTH_RESPONSE" | grep -q "healthy"; then
     log_success "Backend health check passed"
+    echo "  Response: $HEALTH_RESPONSE"
 else
     log_error "Backend health check failed"
-    log_info "Troubleshooting: curl http://localhost:8080/health"
-    exit 1
-fi
-
-log_info "Testing frontend via Ingress..."
-if curl -s "http://localhost:8080/" | grep -q "<!DOCTYPE html>"; then
-    log_success "Frontend is accessible"
-else
-    log_error "Frontend check failed"
-    log_info "Troubleshooting: curl http://localhost:8080/"
+    echo "  Response: $HEALTH_RESPONSE"
     exit 1
 fi
 
