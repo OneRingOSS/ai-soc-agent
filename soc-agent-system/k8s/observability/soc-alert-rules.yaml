@@ -1,0 +1,141 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: soc-agent-alerts
+  namespace: observability
+  labels:
+    app: soc-agent
+    prometheus: kube-prometheus-stack-prometheus
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: soc-agent.rules
+      interval: 30s
+      rules:
+        # =====================================================================
+        # Critical: High Error Rate
+        # =====================================================================
+        - alert: SOCAgentHighErrorRate
+          expr: |
+            (
+              sum(rate(http_requests_total{namespace="soc-agent-demo",status=~"5.."}[5m]))
+              /
+              sum(rate(http_requests_total{namespace="soc-agent-demo"}[5m]))
+            ) > 0.05
+          for: 2m
+          labels:
+            severity: critical
+            component: soc-agent-backend
+            team: security-operations
+          annotations:
+            summary: "SOC Agent experiencing high error rate"
+            description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%). This may indicate issues with threat processing or agent execution."
+            dashboard: "http://localhost:3000/d/soc-agent-system-overview"
+            runbook: "https://wiki.company.com/soc-agent/runbooks/high-error-rate"
+
+        # =====================================================================
+        # Warning: Elevated Threats Requiring Review
+        # =====================================================================
+        - alert: SOCAgentHighReviewQueue
+          expr: |
+            soc_threats_requiring_review > 100
+          for: 5m
+          labels:
+            severity: warning
+            component: soc-agent-backend
+            team: security-operations
+          annotations:
+            summary: "SOC Agent has {{ $value }} threats requiring manual review"
+            description: "The number of threats flagged for manual review has exceeded 100. Security analysts should prioritize reviewing these threats."
+            dashboard: "http://localhost:3000/d/soc-agent-system-overview"
+
+        # =====================================================================
+        # Critical: High False Positive Rate
+        # =====================================================================
+        - alert: SOCAgentHighFalsePositiveRate
+          expr: |
+            (
+              sum(rate(soc_fp_score_bucket{le="0.7"}[10m]))
+              /
+              sum(rate(soc_fp_score_count[10m]))
+            ) > 0.30
+          for: 10m
+          labels:
+            severity: warning
+            component: soc-agent-ml-model
+            team: security-operations
+          annotations:
+            summary: "SOC Agent ML model showing high false positive rate"
+            description: "{{ $value | humanizePercentage }} of threats have FP score > 0.7 (threshold: 30%). ML model may need retraining."
+            dashboard: "http://localhost:3000/d/soc-agent-system-overview"
+            action: "Review recent threat classifications and consider model retraining"
+
+        # =====================================================================
+        # Warning: Slow Threat Processing
+        # =====================================================================
+        - alert: SOCAgentSlowProcessing
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (rate(soc_threat_processing_duration_seconds_bucket{phase="total"}[5m]))
+            ) > 5
+          for: 5m
+          labels:
+            severity: warning
+            component: soc-agent-backend
+            team: security-operations
+          annotations:
+            summary: "SOC Agent threat processing is slow"
+            description: "P95 threat processing time is {{ $value | humanizeDuration }}. This may delay threat detection and response."
+            dashboard: "http://localhost:3000/d/soc-agent-system-overview"
+
+        # =====================================================================
+        # Critical: Backend Pods Down
+        # =====================================================================
+        - alert: SOCAgentBackendDown
+          expr: |
+            sum(up{job="soc-agent-backend",namespace="soc-agent-demo"}) == 0
+          for: 1m
+          labels:
+            severity: critical
+            component: soc-agent-backend
+            team: security-operations
+            page: "true"
+          annotations:
+            summary: "SOC Agent backend is completely down"
+            description: "All SOC Agent backend pods are unavailable. Threat processing has stopped!"
+            dashboard: "http://localhost:3000/d/soc-agent-k8s"
+            action: "Check pod status: kubectl get pods -n soc-agent-demo"
+
+        # =====================================================================
+        # Warning: Backend Pod Restarts
+        # =====================================================================
+        - alert: SOCAgentFrequentRestarts
+          expr: |
+            rate(kube_pod_container_status_restarts_total{namespace="soc-agent-demo",pod=~"soc-agent-backend.*"}[15m]) > 0.1
+          for: 5m
+          labels:
+            severity: warning
+            component: soc-agent-backend
+            team: security-operations
+          annotations:
+            summary: "SOC Agent backend pod {{ $labels.pod }} is restarting frequently"
+            description: "Pod has restarted {{ $value }} times in the last 15 minutes. Check logs for errors."
+            action: "kubectl logs -n soc-agent-demo {{ $labels.pod }} --previous"
+
+        # =====================================================================
+        # Info: High Threat Volume (Informational)
+        # =====================================================================
+        - alert: SOCAgentHighThreatVolume
+          expr: |
+            sum(rate(soc_threats_processed_total[5m])) > 10
+          for: 10m
+          labels:
+            severity: info
+            component: soc-agent-backend
+            team: security-operations
+          annotations:
+            summary: "SOC Agent processing high volume of threats"
+            description: "Processing {{ $value | humanize }} threats/sec. This is {{ $value | humanizePercentage }} above normal baseline."
+            dashboard: "http://localhost:3000/d/soc-agent-system-overview"
+            note: "This may be expected during security incidents or attack campaigns"
+

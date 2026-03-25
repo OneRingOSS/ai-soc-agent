@@ -14,7 +14,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "id": 1,
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -40,8 +40,8 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-          "expr": "rate(soc_threats_processed_total[5m])",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (severity, threat_type) (rate(soc_threats_processed_total[5m]))",
           "legendFormat": "{{severity}} - {{threat_type}}",
           "refId": "A"
         }
@@ -53,7 +53,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "id": 2,
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -79,61 +79,22 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-          "expr": "histogram_quantile(0.5, rate(soc_agent_duration_seconds_bucket[5m]))",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.5, sum by (agent_name, le) (rate(soc_agent_duration_seconds_bucket[5m])))",
           "legendFormat": "p50 - {{agent_name}}",
           "refId": "A"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-          "expr": "histogram_quantile(0.95, rate(soc_agent_duration_seconds_bucket[5m]))",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (agent_name, le) (rate(soc_agent_duration_seconds_bucket[5m])))",
           "legendFormat": "p95 - {{agent_name}}",
           "refId": "B"
         },
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-          "expr": "histogram_quantile(0.99, rate(soc_agent_duration_seconds_bucket[5m]))",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.99, sum by (agent_name, le) (rate(soc_agent_duration_seconds_bucket[5m])))",
           "legendFormat": "p99 - {{agent_name}}",
           "refId": "C"
-        }
-      ]
-    },
-    {
-      "title": "Active WebSocket Connections",
-      "description": "Current number of active WebSocket connections to the SOC system.",
-      "type": "stat",
-      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
-      "id": 3,
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 50 },
-              { "color": "red", "value": 100 }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
-        "textMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-          "expr": "soc_active_websocket_connections",
-          "legendFormat": "Connections",
-          "refId": "A"
         }
       ]
     },
@@ -143,7 +104,7 @@
       "type": "stat",
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
       "id": 4,
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -169,8 +130,8 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-          "expr": "soc_threats_requiring_review",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(soc_threats_requiring_review)",
           "legendFormat": "Pending Review",
           "refId": "A"
         }
@@ -182,7 +143,7 @@
       "type": "histogram",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
       "id": 5,
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -204,7 +165,7 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "expr": "soc_fp_score_bucket",
           "legendFormat": "{{le}}",
           "refId": "A",
@@ -218,7 +179,7 @@
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
       "id": 6,
-      "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
@@ -244,57 +205,157 @@
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus-uid" },
-          "expr": "histogram_quantile(0.95, rate(soc_threat_processing_duration_seconds_bucket[5m]))",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (phase, le) (rate(soc_threat_processing_duration_seconds_bucket[5m])))",
           "legendFormat": "p95 - {{phase}}",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Recent Logs with Trace Correlation",
-      "description": "Live log stream from the SOC agent system with trace_id field for correlating logs with distributed traces in Jaeger.",
-      "type": "logs",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
-      "id": 7,
-      "datasource": { "type": "loki", "uid": "loki-uid" },
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showCommonLabels": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
+      "title": "Error Rate",
+      "description": "Percentage of HTTP requests returning 5xx errors",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "id": 8,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
-          "links": [
-            {
-              "title": "View Trace in Jaeger",
-              "url": "http://localhost:16686/trace/${__data.fields.trace_id}",
-              "targetBlank": true
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          },
+          "unit": "percentunit",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "(sum(rate(http_requests_total{status=~\"5..\"}[5m])) / sum(rate(http_requests_total[5m]))) or on() vector(0)",
+          "legendFormat": "Error Rate",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "Threat Processing Success Rate",
+      "description": "Total threats processed per second across all types",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 12 },
+      "id": 9,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "yellow", "value": 0.1 },
+              { "color": "green", "value": 1.0 }
+            ]
+          },
+          "unit": "ops",
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(soc_threats_processed_total[5m]))",
+          "legendFormat": "Threats/sec",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "title": "False Positive Score Distribution",
+      "description": "Heatmap showing distribution of false positive scores over time",
+      "type": "heatmap",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 24 },
+      "id": 10,
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "scaleDistribution": {
+              "type": "linear"
             }
-          ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "calculate": false,
+        "cellGap": 2,
+        "cellValues": {},
+        "color": {
+          "exponent": 0.5,
+          "fill": "dark-orange",
+          "mode": "scheme",
+          "reverse": false,
+          "scale": "exponential",
+          "scheme": "Spectral",
+          "steps": 128
+        },
+        "exemplars": {
+          "color": "rgba(255,0,255,0.7)"
+        },
+        "filterValues": {
+          "le": 1e-9
+        },
+        "legend": {
+          "show": true
+        },
+        "rowsFrame": {
+          "layout": "auto"
+        },
+        "tooltip": {
+          "show": true,
+          "yHistogram": false
+        },
+        "yAxis": {
+          "axisPlacement": "left",
+          "reverse": false,
+          "unit": "short"
         }
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "loki-uid" },
-          "expr": "{job=\"soc-agent\"}",
-          "refId": "A"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "extractFields",
-          "options": {
-            "source": "line",
-            "format": "json",
-            "keepTime": true,
-            "replace": false
-          }
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (le) (rate(soc_fp_score_bucket[5m]))",
+          "legendFormat": "{{le}}",
+          "refId": "A",
+          "format": "heatmap"
         }
       ]
     }
