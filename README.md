@@ -2,6 +2,13 @@
 
 A multi-agent Security Operations Center (SOC) system with real-time threat intelligence dashboard.
 
+## 📚 Documentation
+
+- **[Documentation Hub](docs/README.md)** - Complete documentation navigation
+- **[Demo Guide](docs/guides/demo-guide.md)** - How to demonstrate the system
+- **[Documentation Index](docs/DOCUMENTATION_INDEX.md)** - Complete index of all docs
+- **[VirusTotal Integration](docs/features/virustotal-integration.md)** - Latest feature (v1.5.0)
+
 ## 📸 Screenshots
 
 ### Dashboard Overview
@@ -41,6 +48,10 @@ A multi-agent Security Operations Center (SOC) system with real-time threat inte
   - [System Overview](#system-overview)
   - [Request Flow](#request-flow)
   - [Agent Architecture](#agent-architecture)
+- [Adversarial Detection & Defense](#️-adversarial-detection--defense)
+  - [Historical Note Poisoning Defense](#historical-note-poisoning-defense)
+  - [Live Demo](#live-demo)
+  - [Mode Configuration](#mode-configuration)
 - [Prerequisites](#-prerequisites)
 - [Quick Start](#-quick-start)
   - [Clone the Repository](#1-clone-the-repository)
@@ -78,10 +89,12 @@ A multi-agent Security Operations Center (SOC) system with real-time threat inte
 
 ## 🏗️ Architecture
 
-- **Backend**: Python/FastAPI with 5 specialized AI agents
+- **Backend**: Python/FastAPI with 5 specialized AI agents + adversarial detection
 - **Frontend**: React/Vite with real-time WebSocket updates
 - **Agents**: Historical, Config, DevOps, Context, Priority
 - **Coordinator**: Parallel agent execution orchestrator
+- **Security**: LLM-based adversarial detector for data poisoning attacks
+- **Intelligence**: VirusTotal integration with Redis caching
 
 ### System Overview
 
@@ -114,6 +127,7 @@ flowchart TB
 
         subgraph SharedState["Shared State Layer"]
             Redis[(Redis<br/>Pub/Sub + Storage)]
+            IntelCache[(Intel Cache<br/>VirusTotal + Threat Intel)]
         end
 
         subgraph Agents["Specialized Agents (All Pods)"]
@@ -124,10 +138,19 @@ flowchart TB
             PA[Priority Agent]
         end
 
+        subgraph Security["Security & Defense Layer"]
+            AD[🛡️ Adversarial Detector<br/>LLM-based Semantic Analysis]
+            VT[VirusTotal Integration<br/>Package Intelligence]
+        end
+
         subgraph Analyzers["Enhanced Analyzers"]
             FPA[False Positive<br/>Analyzer]
             RE[Response<br/>Engine]
             TB[Timeline<br/>Builder]
+        end
+
+        subgraph RedTeam["🎭 Red Team (Demo)"]
+            RT[Adversarial Injector<br/>Note Poisoning Attacks]
         end
     end
 
@@ -139,7 +162,8 @@ flowchart TB
     end
 
     subgraph External["External Services"]
-        OpenAI[OpenAI API]
+        OpenAI[OpenAI API<br/>GPT-4 Analysis]
+        VTApi[VirusTotal API<br/>Threat Intelligence]
     end
 
     UI --> ING
@@ -149,11 +173,18 @@ flowchart TB
 
     API1 & API2 --> Redis
     WS1 & WS2 --> Redis
+    VT --> IntelCache
 
     CA1 & CA2 --> HA & CFA & DA & CTA & PA
     HA & CFA & DA & CTA & PA --> OpenAI
 
+    CA1 & CA2 --> AD
+    AD --> OpenAI
+    AD -.->|detects| RT
+
     CA1 & CA2 --> FPA & RE & TB
+    CA1 & CA2 --> VT
+    VT --> VTApi
 
     API1 & API2 -.->|traces| Jaeger
     API1 & API2 -.->|metrics| Prometheus
@@ -169,6 +200,8 @@ flowchart TB
     style External fill:#ef4444,color:#fff
     style Agents fill:#ec4899,color:#fff
     style Analyzers fill:#06b6d4,color:#fff
+    style Security fill:#dc2626,color:#fff
+    style RedTeam fill:#7c2d12,color:#fff
 ```
 
 ### Request Flow with Observability
@@ -417,6 +450,86 @@ flowchart LR
     style Exporters fill:#f59e0b,color:#fff
     style Backend fill:#8b5cf6,color:#fff
     style Visualization fill:#ec4899,color:#fff
+```
+
+## 🛡️ Adversarial Detection & Defense
+
+The SOC Agent System includes a **novel adversarial detection layer** that uses LLM-based semantic analysis to detect data poisoning attacks against the multi-agent system.
+
+### Historical Note Poisoning Defense
+
+**The Threat**: Attackers inject fabricated analyst notes into historical incident databases to manipulate the Historical Agent's analysis, causing it to misclassify real threats as false positives.
+
+**The Defense**: An LLM-based Adversarial Detector analyzes historical data for fabrication signatures:
+
+| Indicator | What It Detects | Example |
+|-----------|----------------|---------|
+| **Identical Structure** | Templated notes with same format | "Closed - false positive. [Team] confirmed [activity]. [Benign phrase]." |
+| **Temporal Clustering** | Suspicious timing patterns | 18 notes, exactly 1 per day, all at 2:30 AM |
+| **Service Account** | Automated resolution | Resolved by "admin_svc" instead of human analysts |
+| **Fast Resolution** | Unrealistic investigation time | 3 minutes for SQL injection (should be 15-60 min) |
+| **No Ticket References** | Missing work item IDs | No JIRA tickets, no ticket numbers, no references |
+| **Generic Teams** | Lack of specific names | "DB admin team" vs "Talked to Marcus on network team" |
+
+### Live Demo
+
+The system includes a **red team adversarial injector** for demonstrating the attack and defense:
+
+```bash
+# ACT 1: Attack Succeeds (Detector Disabled)
+curl -X POST http://localhost:8080/api/threats/trigger \
+  -H "Content-Type: application/json" \
+  -d '{"adversarial_scenario": "note_poisoning_bypass", "adversarial_detector_enabled": false}'
+
+# ACT 2: Attack Caught (Detector Enabled)
+curl -X POST http://localhost:8080/api/threats/trigger \
+  -H "Content-Type: application/json" \
+  -d '{"adversarial_scenario": "note_poisoning_catch", "adversarial_detector_enabled": true}'
+```
+
+**What You'll See in the UI:**
+- 🚨 **Red "Adversarial Attack Detected" badge** when manipulation is caught
+- ⚠️ **Yellow "Requires Review" badge** indicating human oversight needed
+- 🚨 **Red warning box** explaining why the FP score is unreliable
+- 📊 **Detailed detection reasoning** from the LLM semantic analysis
+
+### Architecture
+
+<augment_code_snippet path="soc-agent-system/backend/src/analyzers/adversarial_detector.py" mode="EXCERPT">
+```python
+class AdversarialDetector:
+    """LLM-based detector for adversarial data poisoning attacks."""
+
+    async def detect_historical_note_poisoning(
+        self,
+        historical_data: List[HistoricalIncident]
+    ) -> AdversarialDetectionResult:
+        """Analyze historical notes for fabrication signatures."""
+```
+</augment_code_snippet>
+
+**Key Files:**
+- `soc-agent-system/backend/src/analyzers/adversarial_detector.py` - LLM-based detection logic
+- `soc-agent-system/backend/src/red_team/adversarial_injector.py` - Attack injection for demos
+- `soc-agent-system/backend/src/adversarial_mock_data/historical_notes.py` - 18 fabricated notes
+- `soc-agent-system/backend/HISTORICAL_NOTE_POISONING_DEMO_GUIDE.md` - Complete demo guide
+
+### Mode Configuration
+
+The system supports **Demo Mode** and **Live Mode**:
+
+| Mode | DEMO_MODE | FORCE_MOCK_MODE | OPENAI_API_KEY | Behavior |
+|------|-----------|-----------------|----------------|----------|
+| **Demo** | `true` | `true` | Optional | Fast mock responses, pre-seeded cache |
+| **Live** | `false` | `false` | **Required** | Real OpenAI API calls, actual LLM reasoning |
+
+**To enable Live Mode in Kubernetes:**
+```bash
+kubectl patch configmap soc-agent-backend-config -n soc-agent-demo \
+  --type merge \
+  -p '{"data":{"DEMO_MODE":"false","FORCE_MOCK_MODE":"false","OPENAI_API_KEY":"sk-proj-..."}}'
+
+kubectl delete pods -n soc-agent-demo -l app=soc-backend
 ```
 
 ## 📋 Prerequisites
