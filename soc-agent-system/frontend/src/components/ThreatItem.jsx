@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { MitreTagBadge, MitreTagList } from './MitreTagBadge'
+import { IntelMatchCard } from './IntelMatchCard'
 
 function ThreatItem({ threat }) {
   const [expanded, setExpanded] = useState(false)
@@ -35,9 +37,9 @@ function ThreatItem({ threat }) {
           Processing: {threat.total_processing_time_ms}ms
         </span>
         {threat.requires_human_review && (
-          <span style={{ 
-            fontSize: '0.85em', 
-            background: '#5c4a1a', 
+          <span style={{
+            fontSize: '0.85em',
+            background: '#5c4a1a',
             color: '#f5a623',
             padding: '0.2rem 0.5rem',
             borderRadius: '4px'
@@ -45,9 +47,35 @@ function ThreatItem({ threat }) {
             ⚠️ Requires Review
           </span>
         )}
+        {threat.adversarial_detection && threat.adversarial_detection.manipulation_detected && (
+          <span style={{
+            fontSize: '0.85em',
+            background: '#4a1a1a',
+            color: '#ff4444',
+            padding: '0.2rem 0.5rem',
+            borderRadius: '4px',
+            fontWeight: 'bold'
+          }}>
+            🚨 Adversarial Attack Detected
+          </span>
+        )}
       </div>
 
-      <button 
+      {/* MITRE Tags Compact Preview */}
+      {threat.mitre_tags && threat.mitre_tags.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {threat.mitre_tags.slice(0, 3).map((tag, idx) => (
+            <MitreTagBadge key={idx} tag={tag} compact={true} showSource={false} />
+          ))}
+          {threat.mitre_tags.length > 3 && (
+            <span style={{ fontSize: '0.75em', color: 'rgba(255,255,255,0.5)', fontStyle: 'italic' }}>
+              +{threat.mitre_tags.length - 3} more
+            </span>
+          )}
+        </div>
+      )}
+
+      <button
         onClick={() => setExpanded(!expanded)}
         style={{ fontSize: '0.9em', padding: '0.4em 0.8em' }}
       >
@@ -57,6 +85,127 @@ function ThreatItem({ threat }) {
       {expanded && (
         <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #2a3f5f' }}>
 
+          {/* Adversarial Detection Section */}
+          {threat.adversarial_detection && threat.adversarial_detection.manipulation_detected && (
+            <div style={{ marginBottom: '1.5rem' }}>
+              <h4 style={{ marginBottom: '0.75rem', color: '#ff4444' }}>🚨 Adversarial Attack Detection</h4>
+              <div style={{
+                padding: '1rem',
+                background: '#1a0a0a',
+                borderRadius: '8px',
+                border: '2px solid #ff4444'
+              }}>
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{
+                    background: '#4a1a1a',
+                    color: '#ff4444',
+                    padding: '0.4rem 0.8rem',
+                    borderRadius: '6px',
+                    fontSize: '0.9em',
+                    fontWeight: 'bold'
+                  }}>
+                    ⚠️ MANIPULATION DETECTED
+                  </div>
+                  <div style={{
+                    background: '#1a2332',
+                    padding: '0.4rem 0.8rem',
+                    borderRadius: '6px',
+                    fontSize: '0.9em'
+                  }}>
+                    Confidence: {(threat.adversarial_detection.confidence * 100).toFixed(0)}%
+                  </div>
+                  {threat.adversarial_detection.attack_vector && (
+                    <div style={{
+                      background: '#1a2332',
+                      padding: '0.4rem 0.8rem',
+                      borderRadius: '6px',
+                      fontSize: '0.9em',
+                      fontFamily: 'monospace'
+                    }}>
+                      Vector: {threat.adversarial_detection.attack_vector.replace(/_/g, ' ')}
+                    </div>
+                  )}
+                </div>
+
+                {threat.adversarial_detection.explanation && (
+                  <div style={{ fontSize: '0.9em', marginBottom: '0.75rem', color: 'rgba(255,255,255,0.9)', lineHeight: '1.6' }}>
+                    <strong style={{ color: '#ff4444' }}>Analysis:</strong> {threat.adversarial_detection.explanation}
+                  </div>
+                )}
+
+                {threat.adversarial_detection.anomalies && threat.adversarial_detection.anomalies.length > 0 && (
+                  <div style={{ fontSize: '0.9em' }}>
+                    <strong style={{ color: '#ff4444' }}>Detected Anomalies ({threat.adversarial_detection.anomalies.length}):</strong>
+                    <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {threat.adversarial_detection.anomalies.map((anomaly, idx) => (
+                        <div key={idx} style={{
+                          background: '#1a2332',
+                          padding: '0.75rem',
+                          borderRadius: '4px',
+                          borderLeft: `4px solid #ff4444`
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <span style={{ fontWeight: 'bold', color: '#ff4444', textTransform: 'uppercase', fontSize: '0.85em' }}>
+                              {anomaly.type.replace(/_/g, ' ')}
+                            </span>
+                            <span style={{
+                              background: anomaly.severity === 'critical' ? '#4a1a1a' : '#5c4a1a',
+                              color: anomaly.severity === 'critical' ? '#ff4444' : '#f5a623',
+                              padding: '0.2rem 0.5rem',
+                              borderRadius: '3px',
+                              fontSize: '0.75em',
+                              fontWeight: 'bold',
+                              textTransform: 'uppercase'
+                            }}>
+                              {anomaly.severity}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.9em', marginBottom: '0.5rem', color: 'rgba(255,255,255,0.8)', lineHeight: '1.5' }}>
+                            {anomaly.description}
+                          </div>
+                          {anomaly.indicators && anomaly.indicators.length > 0 && (
+                            <div style={{ fontSize: '0.85em', marginTop: '0.5rem' }}>
+                              <strong style={{ color: '#7bc62d' }}>Indicators:</strong>
+                              <ul style={{ marginLeft: '1.5rem', marginTop: '0.25rem', color: 'rgba(255,255,255,0.7)' }}>
+                                {anomaly.indicators.map((indicator, iidx) => (
+                                  <li key={iidx} style={{ marginBottom: '0.25rem' }}>{indicator}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          {anomaly.confidence && (
+                            <div style={{ fontSize: '0.8em', color: 'rgba(255,255,255,0.5)', marginTop: '0.5rem' }}>
+                              Confidence: {(anomaly.confidence * 100).toFixed(0)}%
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {threat.adversarial_detection.recommendation && (
+                  <div style={{
+                    marginTop: '0.75rem',
+                    padding: '0.75rem',
+                    background: '#4a1a1a',
+                    borderRadius: '4px',
+                    fontSize: '0.9em',
+                    color: 'rgba(255,255,255,0.9)'
+                  }}>
+                    <strong style={{ color: '#ff4444' }}>Recommendation:</strong> {threat.adversarial_detection.recommendation.replace(/_/g, ' ')}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* MITRE ATT&CK Tags - Full List */}
+          <MitreTagList tags={threat.mitre_tags} />
+
+          {/* Threat Intelligence Matches - Wave 5 */}
+          <IntelMatchCard intelMatches={threat.intel_matches} />
+
           {/* False Positive Score Section */}
           {threat.false_positive_score && (
             <div style={{ marginBottom: '1.5rem' }}>
@@ -65,8 +214,22 @@ function ThreatItem({ threat }) {
                 padding: '1rem',
                 background: '#0a0e27',
                 borderRadius: '8px',
-                border: '1px solid #2a3f5f'
+                border: threat.adversarial_detection && threat.adversarial_detection.manipulation_detected ? '2px solid #ff4444' : '1px solid #2a3f5f'
               }}>
+                {threat.adversarial_detection && threat.adversarial_detection.manipulation_detected && (
+                  <div style={{
+                    background: '#4a1a1a',
+                    color: '#ff4444',
+                    padding: '0.75rem',
+                    borderRadius: '6px',
+                    marginBottom: '0.75rem',
+                    fontSize: '0.9em',
+                    fontWeight: 'bold',
+                    border: '1px solid #ff4444'
+                  }}>
+                    ⚠️ WARNING: This FP score may be unreliable due to detected adversarial manipulation of historical data
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
                   <div className={`fp-score-badge fp-score-${threat.false_positive_score.score < 0.3 ? 'low' : threat.false_positive_score.score < 0.7 ? 'medium' : 'high'}`}>
                     FP Score: {(threat.false_positive_score.score * 100).toFixed(0)}%

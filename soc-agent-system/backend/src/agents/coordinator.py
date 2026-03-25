@@ -17,8 +17,11 @@ from agents.devops_agent import DevOpsAgent
 from agents.context_agent import ContextAgent
 from agents.priority_agent import PriorityAgent
 from analyzers.fp_analyzer import FalsePositiveAnalyzer
+from analyzers.adversarial_detector import AdversarialManipulationDetector
 from analyzers.response_engine import ResponseActionEngine
 from analyzers.timeline_builder import TimelineBuilder
+from mitre_parser import extract_mitre_tags, build_wazuh_tags, merge_mitre_tags
+from mitre_fallback import get_fallback_mitre_tags
 from telemetry import get_tracer
 from metrics import (
     record_threat_processed,
@@ -41,15 +44,37 @@ class CoordinatorAgent:
         self,
         mock_data: Optional[MockDataStore] = None,
         client: Optional[AsyncOpenAI] = None,
-        use_mock: bool = False
+        use_mock: bool = False,
+        intel_cache=None,
+        adversarial_detector_enabled: bool = True
     ):
-        """Initialize coordinator with all specialized agents."""
+        """
+        Initialize coordinator with all specialized agents.
+
+        Args:
+            mock_data: Optional mock data store
+            client: Optional OpenAI client
+            use_mock: Whether to use mock mode
+            intel_cache: Optional IntelFeedCache for threat intelligence enrichment
+            adversarial_detector_enabled: Whether to enable adversarial detection (default: True)
+        """
         self.client = client or AsyncOpenAI(api_key=settings.openai_api_key)
         self.mock_data = mock_data or MockDataStore()
         self.use_mock = use_mock
+        self.adversarial_detector_enabled = adversarial_detector_enabled
+
+        # Initialize intel enricher if cache provided
+        intel_enricher = None
+        if intel_cache:
+            from intel_enricher import IntelEnricher
+            intel_enricher = IntelEnricher(cache=intel_cache)
+            logger.info("CoordinatorAgent: intel enricher initialized")
 
         # Initialize specialized agents
-        self.historical_agent = HistoricalAgent(client=self.client)
+        self.historical_agent = HistoricalAgent(
+            client=self.client,
+            intel_enricher=intel_enricher
+        )
         self.config_agent = ConfigAgent(client=self.client)
         self.devops_agent = DevOpsAgent(client=self.client)
         self.context_agent = ContextAgent(client=self.client)
@@ -57,13 +82,27 @@ class CoordinatorAgent:
 
         # Initialize analyzers
         self.fp_analyzer = FalsePositiveAnalyzer()
+        self.adversarial_detector = AdversarialManipulationDetector(use_mock=use_mock)
         self.response_engine = ResponseActionEngine()
         self.timeline_builder = TimelineBuilder()
 
-        logger.info("🎯 Coordinator initialized with 5 specialized agents + 3 analyzers")
+        logger.info("🎯 Coordinator initialized with 5 specialized agents + 4 analyzers")
     
-    async def analyze_threat(self, signal: ThreatSignal) -> ThreatAnalysis:
-        """Perform comprehensive threat analysis using all agents in parallel."""
+    async def analyze_threat(
+        self,
+        signal: ThreatSignal,
+        historical_context_override: Optional[Dict[str, Any]] = None
+    ) -> ThreatAnalysis:
+        """Perform comprehensive threat analysis using all agents in parallel.
+
+        Args:
+            signal: The threat signal to analyze
+            historical_context_override: Optional override for historical context
+                                         (used for adversarial testing)
+
+        Returns:
+            Complete threat analysis
+        """
         # Create parent span for the entire threat analysis
         with tracer.start_as_current_span("analyze_threat") as span:
             # Set initial span attributes
@@ -91,7 +130,7 @@ class CoordinatorAgent:
 
             # Gather context for each agent
             logger.info("\n📊 GATHERING CONTEXT FOR AGENTS...")
-            contexts = self._build_agent_contexts(signal)
+            contexts = self._build_agent_contexts(signal, historical_context_override)
             logger.info(f"   ✓ Historical: {len(contexts['historical'].get('similar_incidents', []))} similar incidents found")
             logger.info(f"   ✓ Config: Retrieved settings for {signal.customer_name}")
             logger.info(f"   ✓ DevOps: {len(contexts['devops'].get('infra_events', []))} recent infrastructure events")
@@ -175,7 +214,63 @@ class CoordinatorAgent:
             priority_analysis = agent_analyses.get("priority")
             severity = self._extract_severity(priority_analysis) if priority_analysis else ThreatSeverity.MEDIUM
 
-            # 3. Generate Response Plan
+            # 3. Adversarial Manipulation Detection
+            with tracer.start_as_current_span("adversarial_detector"):
+                if self.adversarial_detector_enabled:
+                    # Pass similar_incidents for note authenticity check
+                    similar_incidents = contexts.get('historical', {}).get('similar_incidents', [])
+                    adversarial_result = self.adversarial_detector.analyze(
+                        signal, agent_analyses, severity, fp_score, similar_incidents
+                    )
+
+                    # If manipulation detected, adjust FP score explanation
+                    if adversarial_result.manipulation_detected:
+                        fp_score.explanation = (
+                            f"⚠️ WARNING: FP score may be unreliable due to detected adversarial manipulation. "
+                            f"Original assessment: {fp_score.explanation}"
+                        )
+                        logger.warning(
+                            "FP score potentially compromised by adversarial manipulation",
+                            extra={
+                                "threat_id": signal.id,
+                                "original_fp_score": fp_score.score,
+                                "attack_vector": adversarial_result.attack_vector,
+                                "component": "coordinator"
+                            }
+                        )
+                else:
+                    # Detector disabled - return empty result
+                    from models import AdversarialDetectionResult
+                    adversarial_result = AdversarialDetectionResult(
+                        manipulation_detected=False,
+                        confidence=0.0,
+                        risk_score=0.0,
+                        contradictions=[],
+                        anomalies=[],
+                        attack_vector=None
+                    )
+
+                if adversarial_result.manipulation_detected:
+                    logger.warning(
+                        "🚨 ADVERSARIAL MANIPULATION DETECTED",
+                        extra={
+                            "threat_id": signal.id,
+                            "risk_score": adversarial_result.risk_score,
+                            "attack_vector": adversarial_result.attack_vector,
+                            "contradictions": len(adversarial_result.contradictions),
+                            "anomalies": len(adversarial_result.anomalies),
+                            "component": "adversarial_detector"
+                        }
+                    )
+                    logger.info(f"   🚨 Adversarial Detection: MANIPULATION DETECTED (risk: {adversarial_result.risk_score:.2f})")
+                    logger.info(f"      Attack Vector: {adversarial_result.attack_vector}")
+                    logger.info(f"      Contradictions: {len(adversarial_result.contradictions)}")
+                    logger.info(f"      Anomalies: {len(adversarial_result.anomalies)}")
+                    logger.info(f"      Recommendation: {adversarial_result.recommendation}")
+                else:
+                    logger.info(f"   ✓ Adversarial Detection: No manipulation detected")
+
+            # 4. Generate Response Plan
             with tracer.start_as_current_span("response_engine"):
                 customer_config = contexts['config'].get('customer_config')
                 response_plan = self.response_engine.generate_response_plan(
@@ -183,7 +278,7 @@ class CoordinatorAgent:
                 )
                 logger.info(f"   ✓ Response Plan: {response_plan.primary_action.action_type.value} ({response_plan.primary_action.urgency.value})")
 
-            # 4. Build Investigation Timeline
+            # 5. Build Investigation Timeline
             with tracer.start_as_current_span("timeline_builder"):
                 timeline = self.timeline_builder.build_timeline(
                     signal, agent_analyses, fp_score, response_plan, severity
@@ -195,12 +290,15 @@ class CoordinatorAgent:
             total_time = int((time.time() - start_time) * 1000)
 
             final_analysis = self._synthesize_analysis(
-                signal, agent_analyses, total_time, severity, fp_score, response_plan, timeline
+                signal, agent_analyses, total_time, severity, fp_score, response_plan, timeline, adversarial_result
             )
 
             # Set final span attributes
             span.set_attribute("threat.severity", severity.value)
             span.set_attribute("fp.score", fp_score.score)
+            span.set_attribute("adversarial.detected", adversarial_result.manipulation_detected)
+            if adversarial_result.manipulation_detected:
+                span.set_attribute("adversarial.risk_score", adversarial_result.risk_score)
             span.set_attribute("requires_review", final_analysis.requires_human_review)
 
             # Record Prometheus metrics
@@ -262,19 +360,38 @@ class CoordinatorAgent:
                 logger.error(f"   ❌ {agent_name} failed after {elapsed:.0f}ms: {str(e)}")
                 raise
     
-    def _build_agent_contexts(self, signal: ThreatSignal) -> Dict[str, Dict[str, Any]]:
-        """Build context data for each agent."""
+    def _build_agent_contexts(
+        self,
+        signal: ThreatSignal,
+        historical_context_override: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """Build context data for each agent.
+
+        Args:
+            signal: The threat signal
+            historical_context_override: Optional override for historical context
+                                         (used for adversarial testing)
+
+        Returns:
+            Dictionary of contexts for each agent
+        """
         # Extract keywords for news search
         keywords = [signal.customer_name, signal.threat_type.value]
         if "crypto" in signal.customer_name.lower():
             keywords.append("bitcoin")
-        
-        return {
-            "historical": {
+
+        # Use override if provided, otherwise use mock data
+        if historical_context_override:
+            historical_context = historical_context_override
+        else:
+            historical_context = {
                 "similar_incidents": self.mock_data.get_similar_incidents(
                     signal.threat_type, signal.customer_name
                 )
-            },
+            }
+
+        return {
+            "historical": historical_context,
             "config": {
                 "customer_config": self.mock_data.get_customer_config(signal.customer_name)
             },
@@ -295,7 +412,8 @@ class CoordinatorAgent:
         severity: ThreatSeverity,
         fp_score,
         response_plan,
-        timeline
+        timeline,
+        adversarial_result
     ) -> ThreatAnalysis:
         """Synthesize all agent analyses into final threat analysis."""
 
@@ -321,6 +439,32 @@ class CoordinatorAgent:
                 else:
                     review_reason = "Agent recommendation for manual review"
 
+        # Check for adversarial manipulation detection
+        if adversarial_result and adversarial_result.manipulation_detected:
+            requires_review = True
+            review_reason = f"Adversarial manipulation detected: {adversarial_result.explanation}"
+
+        # 3-Layer MITRE ATT&CK Tag Merge
+        # Layer 1: Wazuh hints (confidence 1.0)
+        wazuh_tags = build_wazuh_tags(signal.mitre_hints) if signal.mitre_hints else []
+
+        # Layer 2: LLM-generated tags from PriorityAgent (confidence >= 0.6)
+        priority_tags = []
+        if priority_analysis and priority_analysis.raw_output:
+            priority_tags = extract_mitre_tags(priority_analysis.raw_output, source="priority_agent")
+
+        # Layer 3: Fallback table (confidence 0.6)
+        fallback_tags = get_fallback_mitre_tags(signal.threat_type)
+
+        # Merge with priority: Wazuh > LLM > Fallback
+        merged_tags = merge_mitre_tags(wazuh_tags, priority_tags)
+
+        # If still no tags, use fallback
+        if not merged_tags:
+            merged_tags = fallback_tags[:6]  # Cap at 6
+
+        logger.info(f"   ✓ MITRE Tags: {len(merged_tags)} techniques (Wazuh: {len(wazuh_tags)}, LLM: {len(priority_tags)}, Fallback: {len(fallback_tags)})")
+
         # Generate executive summary
         all_findings = []
         for analysis in agent_analyses.values():
@@ -329,7 +473,31 @@ class CoordinatorAgent:
         executive_summary = self._generate_executive_summary(
             signal, severity, all_findings[:5], fp_score
         )
-        
+
+        # Extract intel_matches from historical agent metadata
+        intel_matches = []
+        historical_analysis = agent_analyses.get("historical")
+        if historical_analysis and historical_analysis.raw_output:
+            # Parse raw_output (should be JSON string)
+            import json
+            try:
+                if isinstance(historical_analysis.raw_output, str):
+                    raw_data = json.loads(historical_analysis.raw_output)
+                else:
+                    raw_data = historical_analysis.raw_output
+
+                metadata = raw_data.get("metadata", {})
+                intel_matches_data = metadata.get("intel_matches", [])
+
+                if intel_matches_data:
+                    from models import IntelMatch
+                    intel_matches = [
+                        IntelMatch(**match_data) for match_data in intel_matches_data
+                    ]
+                    logger.info(f"   ✓ Intel Matches: {len(intel_matches)} threat intelligence hits")
+            except Exception as e:
+                logger.warning(f"   ⚠️  Failed to extract intel_matches from historical agent: {e}")
+
         return ThreatAnalysis(
             signal=signal,
             status=ThreatStatus.COMPLETED,
@@ -337,9 +505,12 @@ class CoordinatorAgent:
             executive_summary=executive_summary,
             mitre_tactics=mitre_tactics,
             mitre_techniques=mitre_techniques,
+            mitre_tags=merged_tags,  # New: structured MITRE tags with source tracking
+            intel_matches=intel_matches,  # New: threat intelligence matches
             customer_narrative=customer_narrative,
             agent_analyses=agent_analyses,
             false_positive_score=fp_score,
+            adversarial_detection=adversarial_result,
             response_plan=response_plan,
             investigation_timeline=timeline,
             total_processing_time_ms=total_time,
@@ -389,7 +560,25 @@ class CoordinatorAgent:
 
 
 # Factory function for easy instantiation
-def create_coordinator(use_mock: bool = False) -> CoordinatorAgent:
-    """Create a coordinator agent instance."""
-    return CoordinatorAgent(use_mock=use_mock)
+def create_coordinator(
+    use_mock: bool = False,
+    intel_cache=None,
+    adversarial_detector_enabled: bool = True
+) -> CoordinatorAgent:
+    """
+    Create a coordinator agent instance.
+
+    Args:
+        use_mock: Whether to use mock mode
+        intel_cache: Optional IntelFeedCache for threat intelligence enrichment
+        adversarial_detector_enabled: Whether to enable adversarial detection (default: True)
+
+    Returns:
+        CoordinatorAgent instance
+    """
+    return CoordinatorAgent(
+        use_mock=use_mock,
+        intel_cache=intel_cache,
+        adversarial_detector_enabled=adversarial_detector_enabled
+    )
 

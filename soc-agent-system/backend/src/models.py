@@ -1,7 +1,7 @@
 """Pydantic models for SOC Agent System."""
 from datetime import datetime
 from enum import Enum
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union
 from pydantic import BaseModel, Field
 import uuid
 
@@ -73,7 +73,8 @@ class ThreatSignal(BaseModel):
     customer_name: str
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     metadata: Dict[str, Any] = Field(default_factory=dict)
-    
+    mitre_hints: List[str] = Field(default_factory=list)  # MITRE technique IDs from Wazuh
+
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
 
@@ -87,6 +88,7 @@ class AgentAnalysis(BaseModel):
     recommendations: List[str] = Field(default_factory=list)
     processing_time_ms: int
     data_sources_consulted: List[str] = Field(default_factory=list)
+    raw_output: Union[str, Dict[str, Any]] = ""  # Full LLM response for MITRE tag extraction (can be JSON string or dict)
 
 
 # ============================================================================
@@ -111,6 +113,58 @@ class FalsePositiveScore(BaseModel):
     similar_resolved_as_real: int = 0  # Count of similar threats confirmed real
     recommendation: str = ""  # "likely_false_positive", "likely_real_threat", "needs_review"
     explanation: str = ""
+
+
+# ============================================================================
+# ADVERSARIAL DETECTION
+# ============================================================================
+
+class Contradiction(BaseModel):
+    """Detected contradiction between agent analyses.
+
+    Indicates potential adversarial manipulation when agents disagree
+    on fundamental assessments (e.g., Context says 'benign' but Priority says 'attack').
+    """
+    agents: List[str]  # Names of agents in contradiction (e.g., ["context", "priority"])
+    description: str  # Human-readable description of the contradiction
+    severity_mismatch: bool = False  # Whether this is a severity mismatch
+    confidence: float = 0.8  # Confidence in the contradiction detection (0-1)
+    context_analysis_snippet: Optional[str] = None  # Excerpt from Context Agent analysis
+    priority_analysis_snippet: Optional[str] = None  # Excerpt from Priority Agent analysis
+    historical_analysis_snippet: Optional[str] = None  # Excerpt from Historical Agent analysis
+    metadata: Optional[Dict[str, Any]] = None  # Additional metadata for advanced detections
+
+
+class Anomaly(BaseModel):
+    """Detected anomaly in data that suggests manipulation.
+
+    Examples:
+    - Geo-IP mismatch (private IP with public geo-location)
+    - Attack tool User-Agent
+    - Statistical impossibilities in historical data
+    """
+    type: str  # "context_metadata_inconsistency", "historical_data_anomaly", etc.
+    description: str  # Human-readable description
+    severity: str  # "high", "medium", "low"
+    indicators: List[str] = Field(default_factory=list)  # Specific indicators found
+    confidence: Optional[float] = None  # Confidence score (0.0-1.0)
+    metadata: Optional[Dict[str, Any]] = None  # Additional metadata
+
+
+class AdversarialDetectionResult(BaseModel):
+    """Result of adversarial manipulation detection analysis.
+
+    This is the output of the AdversarialManipulationDetector and indicates
+    whether the threat signal or agent analyses show signs of adversarial manipulation.
+    """
+    manipulation_detected: bool  # True if manipulation is suspected
+    confidence: float = Field(ge=0.0, le=1.0)  # Confidence in the detection
+    contradictions: List[Contradiction] = Field(default_factory=list)  # Cross-agent contradictions
+    anomalies: List[Anomaly] = Field(default_factory=list)  # Data anomalies
+    risk_score: float = Field(ge=0.0, le=1.0)  # Overall manipulation risk score (0 = no risk, 1 = high risk)
+    attack_vector: Optional[str] = None  # "context_agent", "historical_agent", "combined", etc.
+    recommendation: str = ""  # "flag_for_review", "block_signal", "investigate_data_source", etc.
+    explanation: str = ""  # Detailed explanation for analysts
 
 
 # ============================================================================
@@ -192,6 +246,27 @@ class MITRETechnique(BaseModel):
     description: str
 
 
+class MitreTag(BaseModel):
+    """MITRE ATT&CK tag with source tracking and confidence."""
+    technique_id: str  # e.g. "T1566.001"
+    technique_name: str  # e.g. "Spearphishing Attachment"
+    tactic: str  # e.g. "Initial Access"
+    tactic_id: str  # e.g. "TA0001"
+    confidence: float = Field(ge=0.0, le=1.0, default=1.0)
+    source: str = "priority_agent"  # "wazuh" | "priority_agent" | "fallback"
+
+
+class IntelMatch(BaseModel):
+    """Live threat intelligence match from external feeds (e.g., VirusTotal)."""
+    ioc_type: str  # "hash" | "ip" | "domain" | "url"
+    ioc_value: str  # The actual IOC value (e.g., SHA256 hash)
+    source: str  # "virustotal" | "alienvault" | "misp"
+    description: str  # Human-readable description of the match
+    date_added: str = ""  # ISO 8601 timestamp when first seen
+    confidence: float = Field(ge=0.0, le=1.0, default=0.8)
+    threat_actor: Optional[str] = None  # Associated threat actor if known
+
+
 class ThreatAnalysis(BaseModel):
     """Complete threat analysis from coordinator."""
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -199,13 +274,16 @@ class ThreatAnalysis(BaseModel):
     status: ThreatStatus = ThreatStatus.COMPLETED
     severity: ThreatSeverity
     executive_summary: str
-    mitre_tactics: List[MITRETactic] = Field(default_factory=list)
-    mitre_techniques: List[MITRETechnique] = Field(default_factory=list)
+    mitre_tactics: List[MITRETactic] = Field(default_factory=list)  # Legacy field
+    mitre_techniques: List[MITRETechnique] = Field(default_factory=list)  # Legacy field
+    mitre_tags: List[MitreTag] = Field(default_factory=list)  # NEW: Rich MITRE tags with source tracking
+    intel_matches: List[IntelMatch] = Field(default_factory=list)  # NEW: Live threat intelligence matches
     customer_narrative: str
     agent_analyses: Dict[str, AgentAnalysis] = Field(default_factory=dict)
 
     # NEW: Enhanced analysis features
     false_positive_score: Optional[FalsePositiveScore] = None
+    adversarial_detection: Optional[AdversarialDetectionResult] = None
     response_plan: Optional[ResponsePlan] = None
     investigation_timeline: Optional[InvestigationTimeline] = None
 
