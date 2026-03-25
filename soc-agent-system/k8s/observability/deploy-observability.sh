@@ -120,19 +120,22 @@ deploy_jaeger() {
 # Deploy Loki for log aggregation
 deploy_loki() {
     log_info "Deploying Loki + Promtail..."
-    
+
     # Add Grafana Helm repo
     helm repo add grafana https://grafana.github.io/helm-charts 2>/dev/null || true
     helm repo update
-    
+
     # Deploy Loki stack (includes Loki + Promtail)
+    # NOTE: Set isDefault=false to avoid conflict with Prometheus datasource
+    # Only one datasource can be marked as default in Grafana
     helm install loki grafana/loki-stack \
         --namespace "$NAMESPACE" \
         --set loki.enabled=true \
         --set promtail.enabled=true \
         --set grafana.enabled=false \
+        --set loki.datasource.isDefault=false \
         --wait --timeout=180s
-    
+
     log_success "Loki + Promtail deployed"
 }
 

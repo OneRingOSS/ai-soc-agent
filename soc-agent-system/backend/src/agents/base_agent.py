@@ -60,7 +60,8 @@ class BaseAgent(ABC):
             )
 
             logger.debug(f"[{self.name}] Received response from OpenAI")
-            result = json.loads(response.choices[0].message.content)
+            raw_response = response.choices[0].message.content
+            result = json.loads(raw_response)
             processing_time = int((time.time() - start_time) * 1000)
 
             logger.debug(f"[{self.name}] Parsed response - Confidence: {result.get('confidence', 0.5):.2f}")
@@ -71,7 +72,8 @@ class BaseAgent(ABC):
                 confidence=result.get("confidence", 0.5),
                 key_findings=result.get("key_findings", []),
                 recommendations=result.get("recommendations", []),
-                processing_time_ms=processing_time
+                processing_time_ms=processing_time,
+                raw_output=raw_response
             )
             
         except Exception as e:
@@ -82,7 +84,8 @@ class BaseAgent(ABC):
                 confidence=0.0,
                 key_findings=["Error during analysis"],
                 recommendations=["Manual review required"],
-                processing_time_ms=processing_time
+                processing_time_ms=processing_time,
+                raw_output=""
             )
     
     async def analyze_mock(
@@ -104,12 +107,71 @@ class BaseAgent(ABC):
 
         logger.debug(f"[{self.name}] Mock analysis complete - simulated {processing_time}ms processing")
 
+        # Generate mock raw output with MITRE tags for PriorityAgent
+        mock_raw_output = ""
+        if self.name == "Priority Agent":
+            # Include mock MITRE tags for testing (Android-specific for DEVICE_COMPROMISE)
+            from models import ThreatType
+            if signal.threat_type == ThreatType.DEVICE_COMPROMISE:
+                mock_raw_output = f"""{{
+  "analysis": "Mock analysis for {signal.threat_type.value}",
+  "confidence": 0.85,
+  "key_findings": ["Mock finding for {self.name}"],
+  "recommendations": ["Mock recommendation from {self.name}"]
+}}
+
+<MITRE_TAGS>
+[
+  {{
+    "technique_id": "T1475",
+    "technique_name": "Deliver Malicious App via Authorized App Store",
+    "tactic": "Initial Access",
+    "tactic_id": "TA0027",
+    "confidence": 0.85
+  }},
+  {{
+    "technique_id": "T1533",
+    "technique_name": "Data from Local System",
+    "tactic": "Collection",
+    "tactic_id": "TA0035",
+    "confidence": 0.75
+  }}
+]
+</MITRE_TAGS>"""
+            else:
+                mock_raw_output = f"""{{
+  "analysis": "Mock analysis for {signal.threat_type.value}",
+  "confidence": 0.85,
+  "key_findings": ["Mock finding for {self.name}"],
+  "recommendations": ["Mock recommendation from {self.name}"]
+}}
+
+<MITRE_TAGS>
+[
+  {{
+    "technique_id": "T1499",
+    "technique_name": "Endpoint Denial of Service",
+    "tactic": "Impact",
+    "tactic_id": "TA0040",
+    "confidence": 0.75
+  }}
+]
+</MITRE_TAGS>"""
+        else:
+            mock_raw_output = f"""{{
+  "analysis": "Mock analysis for {signal.threat_type.value}",
+  "confidence": 0.85,
+  "key_findings": ["Mock finding for {self.name}"],
+  "recommendations": ["Mock recommendation from {self.name}"]
+}}"""
+
         return AgentAnalysis(
             agent_name=self.name,
             analysis=f"Mock analysis for {signal.threat_type.value}",
             confidence=0.85,
             key_findings=[f"Mock finding for {self.name}"],
             recommendations=[f"Mock recommendation from {self.name}"],
-            processing_time_ms=processing_time
+            processing_time_ms=processing_time,
+            raw_output=mock_raw_output
         )
 

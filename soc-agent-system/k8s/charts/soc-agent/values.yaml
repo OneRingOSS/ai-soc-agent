@@ -50,6 +50,12 @@ backend:
     OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger.observability.svc.cluster.local:4317"
     OTEL_SERVICE_NAME: "soc-agent-system"
     LOG_LEVEL: "INFO"
+    # Mock mode - disable OpenAI API calls for development
+    FORCE_MOCK_MODE: "true"
+    # Disable auto threat generation to prevent resource exhaustion
+    ENABLE_AUTO_THREAT_GENERATION: "false"
+    THREAT_GENERATION_INTERVAL: "30"
+    MAX_STORED_THREATS: "50"
   probes:
     liveness:
       path: /health

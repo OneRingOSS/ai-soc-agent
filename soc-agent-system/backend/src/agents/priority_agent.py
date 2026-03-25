@@ -27,6 +27,27 @@ MITRE ATT&CK Tactics to consider:
 - TA0040: Impact
 - TA0010: Exfiltration
 - TA0011: Command and Control
+- TA0027-TA0037: Mobile ATT&CK (for Android/iOS threats)
+
+IMPORTANT: After your JSON response, include a MITRE_TAGS block with structured technique mappings:
+
+<MITRE_TAGS>
+[
+  {
+    "technique_id": "T1234",
+    "technique_name": "Technique Name",
+    "tactic": "Tactic Name",
+    "tactic_id": "TA0001",
+    "confidence": 0.85
+  }
+]
+</MITRE_TAGS>
+
+Rules for MITRE_TAGS:
+- Include 2-4 most relevant techniques
+- confidence must be >= 0.6 (filter out low-confidence tags)
+- Use Mobile ATT&CK (TA0027-TA0037) for Android/iOS threats
+- Use Enterprise ATT&CK for other threats
 
 Respond in JSON format with:
 {
@@ -39,17 +60,26 @@ Respond in JSON format with:
     "mitre_techniques": [{"id": "T1078", "name": "Valid Accounts", "description": "..."}],
     "customer_narrative": "Professional explanation for customer",
     "requires_human_review": boolean
-}"""
+}
+
+<MITRE_TAGS>
+[...]
+</MITRE_TAGS>"""
     
     def build_user_prompt(self, signal: ThreatSignal, context: Dict[str, Any]) -> str:
         """Build user prompt with threat for prioritization."""
+        mitre_hints_text = ""
+        if signal.mitre_hints:
+            mitre_hints_text = f"\n- MITRE Hints from Wazuh: {', '.join(signal.mitre_hints)}"
+
         return f"""Prioritize and classify this threat signal:
 
 CURRENT THREAT:
 - Type: {signal.threat_type.value}
 - Customer: {signal.customer_name}
 - Timestamp: {signal.timestamp.isoformat()}
-- Metadata: {signal.metadata}
+- Metadata: {signal.metadata}{mitre_hints_text}
 
-Map to MITRE ATT&CK framework, assign severity, and generate appropriate customer communication."""
+Map to MITRE ATT&CK framework, assign severity, and generate appropriate customer communication.
+If MITRE hints are provided, use them as authoritative guidance for technique selection."""
 

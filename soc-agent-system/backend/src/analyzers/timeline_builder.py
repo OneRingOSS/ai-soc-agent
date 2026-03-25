@@ -1,6 +1,6 @@
 """Investigation Timeline Builder - Creates chronological event timeline."""
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 import random
 
@@ -70,7 +70,8 @@ class TimelineBuilder:
             self._add_response_events(response_plan)
 
         # Calculate duration
-        end_time = datetime.utcnow()
+        # Ensure end_time has same timezone awareness as start_time
+        end_time = datetime.now(timezone.utc) if self.start_time.tzinfo else datetime.utcnow()
         duration_ms = int((end_time - self.start_time).total_seconds() * 1000)
 
         timeline = InvestigationTimeline(

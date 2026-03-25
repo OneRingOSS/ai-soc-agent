@@ -18,6 +18,12 @@ from telemetry import init_telemetry, instrument_fastapi
 from metrics import create_instrumentator, soc_active_websocket_connections
 from health import check_liveness, check_readiness, set_coordinator, set_store
 from store import create_store, ThreatStore
+from wazuh_translator import (
+    translate_wazuh_alert,
+    InvalidWazuhAlertError,
+    UnsupportedWazuhAlertError,
+    WazuhValidationError
+)
 
 # Configure structured JSON logging
 setup_json_logging("INFO")
@@ -27,6 +33,7 @@ logger = get_logger(__name__)
 
 # Threat store (Redis or in-memory fallback)
 threat_store: Optional[ThreatStore] = None
+intel_cache = None  # Intel feed cache for VT enrichment
 websocket_clients: List[WebSocket] = []
 
 
@@ -34,12 +41,15 @@ class TriggerRequest(BaseModel):
     """Request model for manual threat trigger."""
     threat_type: Optional[str] = None
     scenario: Optional[str] = None
+    # Adversarial demo support
+    adversarial_scenario: Optional[str] = None  # "note_poisoning_bypass", "note_poisoning_catch", etc.
+    adversarial_detector_enabled: Optional[bool] = None  # Override detector state
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    global threat_store
+    global threat_store, intel_cache
 
     logger.info("🚀 SOC Agent System starting up...")
     use_mock = settings.should_use_mock()
@@ -59,12 +69,27 @@ async def lifespan(app: FastAPI):
     threat_store = await create_store(settings.redis_url, settings.max_stored_threats)
     set_store(threat_store)
 
+    # Initialize intel cache for VT enrichment (Wave 5)
+    logger.info("   Initializing intel cache for threat intelligence...")
+    from intel_cache import IntelFeedCache
+    intel_cache = IntelFeedCache()  # Uses REDIS_HOST/REDIS_PORT from env
+
+    # Seed demo data if in DEMO_MODE
+    import os
+    if os.getenv("DEMO_MODE", "false").lower() == "true":
+        logger.info("   Seeding demo intel data (DEMO_MODE=true)...")
+        await intel_cache.seed_demo_cache()
+
     # Initialize coordinator for health checks
     logger.info("   Initializing coordinator for health checks...")
-    coordinator = create_coordinator(use_mock=settings.should_use_mock())
+    coordinator = create_coordinator(
+        use_mock=settings.should_use_mock(),
+        intel_cache=intel_cache
+    )
     set_coordinator(coordinator)
 
     # Startup: Conditionally start background threat generation
+    task = None
     if settings.enable_auto_threat_generation:
         logger.info("   Starting background threat generator...")
         task = asyncio.create_task(background_threat_generator())
@@ -77,14 +102,17 @@ async def lifespan(app: FastAPI):
 
     # Shutdown: Cancel background task and close store
     logger.info("🛑 SOC Agent System shutting down...")
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
+    if task:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
 
     if threat_store:
         await threat_store.close()
+
+    # Intel cache uses Redis connection pool - no explicit close needed
 
     logger.info("✅ Shutdown complete")
 
@@ -115,7 +143,10 @@ instrumentator.instrument(app).expose(app, endpoint="/metrics", include_in_schem
 
 async def background_threat_generator():
     """Generate threats periodically in the background."""
-    coordinator = create_coordinator(use_mock=settings.should_use_mock())
+    coordinator = create_coordinator(
+        use_mock=settings.should_use_mock(),
+        intel_cache=intel_cache
+    )
 
     while True:
         try:
@@ -255,7 +286,66 @@ async def get_analytics():
 @app.post("/api/threats/trigger", response_model=ThreatAnalysis)
 async def trigger_threat(request: TriggerRequest):
     """Manually trigger a threat for demo purposes."""
-    coordinator = create_coordinator(use_mock=settings.should_use_mock())
+    # Handle adversarial scenarios
+    if request.adversarial_scenario:
+        from red_team.adversarial_injector import AdversarialInjector
+
+        injector = AdversarialInjector()
+
+        # Determine detector state
+        detector_enabled = request.adversarial_detector_enabled if request.adversarial_detector_enabled is not None else True
+
+        # Create coordinator with detector state
+        coordinator = create_coordinator(
+            use_mock=settings.should_use_mock(),
+            intel_cache=intel_cache,
+            adversarial_detector_enabled=detector_enabled
+        )
+
+        # Generate adversarial attack based on scenario
+        if request.adversarial_scenario == "note_poisoning_bypass":
+            # ACT 1: Detector disabled
+            attack_data = injector.inject_historical_note_poisoning_attack(
+                customer_name="DEMO_NotePoisonCorp_ACT1",
+                threat_type=ThreatType.ANOMALY_DETECTION
+            )
+            signal = attack_data["signal"]
+            historical_context = attack_data["historical_context"]
+            analysis = await coordinator.analyze_threat(signal, historical_context_override=historical_context)
+
+        elif request.adversarial_scenario == "note_poisoning_catch":
+            # ACT 2: Detector enabled
+            attack_data = injector.inject_historical_note_poisoning_attack(
+                customer_name="DEMO_NotePoisonCorp_ACT2",
+                threat_type=ThreatType.ANOMALY_DETECTION
+            )
+            signal = attack_data["signal"]
+            historical_context = attack_data["historical_context"]
+            analysis = await coordinator.analyze_threat(signal, historical_context_override=historical_context)
+
+        elif request.adversarial_scenario == "note_poisoning_baseline":
+            # BASELINE: Clean signal
+            attack_data = injector.inject_historical_clean_data(
+                customer_name="DEMO_CleanCorp_BASELINE",
+                threat_type=ThreatType.ANOMALY_DETECTION
+            )
+            signal = attack_data["signal"]
+            # Clean data doesn't need historical context override - use normal flow
+            analysis = await coordinator.analyze_threat(signal)
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown adversarial scenario: {request.adversarial_scenario}")
+
+        # Store (this also publishes to Redis Pub/Sub if using RedisStore)
+        await threat_store.save_threat(analysis)
+
+        return analysis
+
+    # Normal threat generation (existing logic)
+    coordinator = create_coordinator(
+        use_mock=settings.should_use_mock(),
+        intel_cache=intel_cache
+    )
 
     # Generate signal based on request
     if request.scenario:
@@ -276,6 +366,50 @@ async def trigger_threat(request: TriggerRequest):
     await threat_store.save_threat(analysis)
 
     return analysis
+
+
+@app.post("/api/threats/ingest/wazuh", status_code=202)
+async def ingest_wazuh_alert(alert: Dict):
+    """
+    Ingest external Wazuh alerts for analysis.
+
+    Wave 1: Supports rule.id=100006 (Android malicious app install).
+    Wave 3: Supports Shuffle-wrapped format (extracts from all_fields).
+    Returns 202 Accepted with the normalized ThreatSignal.
+    """
+    try:
+        # Extract raw Wazuh alert from Shuffle wrapper if present
+        # Shuffle wraps alerts in: {"severity": ..., "all_fields": {<raw alert>}}
+        if "all_fields" in alert:
+            wazuh_alert = alert["all_fields"]
+        else:
+            wazuh_alert = alert  # Direct format (backward compatibility)
+
+        # Translate Wazuh alert to ThreatSignal
+        signal = translate_wazuh_alert(wazuh_alert)
+
+        # Analyze threat using coordinator
+        coordinator = create_coordinator(
+            use_mock=settings.should_use_mock(),
+            intel_cache=intel_cache
+        )
+        analysis = await coordinator.analyze_threat(signal)
+
+        # Store (this also publishes to Redis Pub/Sub if using RedisStore)
+        await threat_store.save_threat(analysis)
+
+        # Return the normalized signal (not full analysis) per Wave 1 spec
+        return json.loads(signal.model_dump_json())
+
+    except InvalidWazuhAlertError as e:
+        raise HTTPException(status_code=422, detail=e.to_detail())
+    except UnsupportedWazuhAlertError as e:
+        raise HTTPException(status_code=422, detail=e.to_detail())
+    except WazuhValidationError as e:
+        raise HTTPException(status_code=422, detail=e.to_detail())
+    except Exception as e:
+        logger.error(f"Unexpected error ingesting Wazuh alert: {e}")
+        raise HTTPException(status_code=500, detail={"message": "Internal server error processing Wazuh alert"})
 
 
 @app.websocket("/ws")

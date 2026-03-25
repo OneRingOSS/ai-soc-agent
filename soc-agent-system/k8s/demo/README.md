@@ -2,12 +2,71 @@
 
 This directory contains scripts for demonstrating the SOC Agent System running on Kubernetes during interviews or presentations.
 
+## 🔄 Sequential Deployment Flow
+
+The setup script follows a proper dependency chain with testing at each stage to ensure reliability:
+
+```mermaid
+graph TD
+    Start([Start Setup Script]) --> CheckDeps[Check Prerequisites<br/>Docker, Kind, kubectl, Helm]
+    CheckDeps --> CreateCluster{Cluster<br/>Exists?}
+    CreateCluster -->|No| NewCluster[Create Kind Cluster]
+    CreateCluster -->|Yes| AskRecreate{Recreate?}
+    AskRecreate -->|Yes| DeleteCluster[Delete Cluster] --> NewCluster
+    AskRecreate -->|No| UseExisting[Use Existing Cluster]
+    NewCluster --> BuildImages[Build Docker Images<br/>Backend + Frontend]
+    UseExisting --> BuildImages
+    BuildImages --> LoadImages[Load Images to Kind]
+    LoadImages --> InstallIngress[Install Nginx Ingress]
+    InstallIngress --> CreateNS[Create Namespace]
+
+    CreateNS --> DeployRedis[1️⃣ Deploy Redis]
+    DeployRedis --> WaitRedis[Wait for Redis Pod Ready]
+    WaitRedis --> TestRedis{Test Redis<br/>PING → PONG?}
+    TestRedis -->|❌ Fail| ErrorRedis[❌ Exit: Redis Failed]
+    TestRedis -->|✅ Pass| DeployBackend[2️⃣ Deploy Backend + HPA]
+
+    DeployBackend --> WaitBackend[Wait for Backend Pods Ready]
+    WaitBackend --> TestBackendRedis{Verify Backend<br/>Connected to Redis?}
+    TestBackendRedis -->|❌ Fail| ErrorBackend[❌ Exit: Backend Connection Failed]
+    TestBackendRedis -->|✅ Pass| DeployFrontend[3️⃣ Deploy Frontend + Ingress]
+
+    DeployFrontend --> WaitFrontend[Wait for Frontend Pod Ready]
+    WaitFrontend --> TestFrontend{Test Frontend<br/>via Ingress?}
+    TestFrontend -->|❌ Fail| ErrorFrontend[❌ Exit: Frontend Failed]
+    TestFrontend -->|✅ Pass| TestAPI[4️⃣ Test Backend API<br/>/health endpoint]
+
+    TestAPI --> ShowStatus[Show Deployment Status<br/>Pods, Services, Ingress]
+    ShowStatus --> CreateThreats[Create 5 Sample Threats<br/>Diverse Types]
+    CreateThreats --> Complete([✅ Setup Complete!<br/>Ready for Demo])
+
+    style Start fill:#e1f5e1
+    style Complete fill:#e1f5e1
+    style ErrorRedis fill:#ffe1e1
+    style ErrorBackend fill:#ffe1e1
+    style ErrorFrontend fill:#ffe1e1
+    style DeployRedis fill:#e3f2fd
+    style DeployBackend fill:#e3f2fd
+    style DeployFrontend fill:#e3f2fd
+    style TestRedis fill:#fff9e1
+    style TestBackendRedis fill:#fff9e1
+    style TestFrontend fill:#fff9e1
+```
+
+**Key Benefits:**
+- ✅ **No Race Conditions**: Each component waits for its dependencies
+- ✅ **Fail Fast**: Script exits immediately if any component fails
+- ✅ **Guaranteed Redis Connection**: Backend never falls back to in-memory store
+- ✅ **Clear Error Messages**: Know exactly what failed and where
+- ✅ **Production-Ready**: Follows deployment best practices
+
 ## 📁 Contents
 
 - **`setup_demo.sh`** - Pre-demo setup script (run once before demo, takes 3-5 minutes)
 - **`run_demo.sh`** - Quick interactive demo script (for live presentation)
 - **`generate_threat_with_openai.sh`** - Generate a threat using live OpenAI API (for interviewer demo)
 - **`revert_to_mock_mode.sh`** - Revert backend to mock mode (no API costs)
+- **`access_observability.sh`** - Access observability dashboards (Prometheus, Grafana, Jaeger)
 - **`teardown_demo.sh`** - Cleanup script to remove all resources
 - **`README.md`** - This file
 
@@ -214,6 +273,52 @@ kubectl logs -n soc-agent-demo -l app=soc-frontend --tail=50
 kubectl logs -n soc-agent-demo -l app=redis --tail=50
 ```
 
+### Access Observability Dashboards
+
+```bash
+# Start port-forwards to observability stack
+bash soc-agent-system/k8s/demo/access_observability.sh
+```
+
+This will set up port-forwards for:
+- **Prometheus** (http://localhost:9090) - Metrics and queries
+- **Grafana** (http://localhost:3000) - Dashboards (if running)
+- **Jaeger** (http://localhost:16686) - Distributed tracing
+- **AlertManager** (http://localhost:9093) - Alert management
+
+**Useful Prometheus Queries:**
+```promql
+# Request rate
+rate(http_requests_total[5m])
+
+# Error rate
+rate(http_requests_total{status=~"5.."}[5m])
+
+# Pod CPU usage
+container_cpu_usage_seconds_total{namespace="soc-agent-demo"}
+
+# Pod memory usage
+container_memory_usage_bytes{namespace="soc-agent-demo"}
+
+# HPA current replicas
+kube_horizontalpodautoscaler_status_current_replicas{namespace="soc-agent-demo"}
+```
+
+**Manual Port-Forward (Alternative):**
+```bash
+# Prometheus
+kubectl port-forward -n observability svc/kube-prometheus-stack-prometheus 9090:9090
+
+# Jaeger
+kubectl port-forward -n observability svc/jaeger 16686:16686
+
+# Grafana (if running)
+kubectl port-forward -n observability svc/kube-prometheus-stack-grafana 3000:80
+
+# Get Grafana password
+kubectl get secret -n observability kube-prometheus-stack-grafana -o jsonpath="{.data.admin-password}" | base64 --decode
+```
+
 ## 🐛 Troubleshooting
 
 ### Pods Not Starting
@@ -292,15 +397,11 @@ This is much faster (~1 minute) since images are already loaded!
 - **Test Suites**: `soc-agent-system/k8s/tests/`
 - **Load Tests**: `soc-agent-system/loadtests/`
 
-## 🎓 Interview Talking Points
+## 🎓 Cheat Sheet
 
-See `DEMO_SCRIPT.md` for detailed narration and talking points.
-
-Key highlights:
-- Production-ready Kubernetes architecture
-- Horizontal scaling with HPA
-- Zero-downtime deployments
-- Multi-pod state management with Redis
-- Comprehensive testing (integration, performance, resilience)
-- Observability-ready (metrics, traces, logs)
+1. cluster stats - kubectl get all -n soc-agent-demo
+2. If ingress issue then check if local host is being used incorrectly
+3. For manual testing curl -X POST http://localhost:8080/api/threats/trigger \
+  -H "Content-Type: application/json" \
+  -d '{"threat_type": "bot_traffic"}'
 
