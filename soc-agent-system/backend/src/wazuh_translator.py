@@ -1,6 +1,6 @@
 """Validation and translation helpers for external Wazuh alert ingestion."""
 from datetime import datetime
-from typing import Any, List, Optional, Union
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
