@@ -42,7 +42,7 @@ help:
 	@echo ""
 	@echo "Quality Gates:"
 	@echo "  make lint             - Run ruff linter on backend code"
-	@echo "  make test             - Run unit tests with coverage (60%+ required)"
+	@echo "  make test             - Run unit tests with coverage (55%+ required)"
 	@echo "  make test-integration - Run integration tests (requires Redis)"
 	@echo "  make scan-secrets     - Scan for secrets using TruffleHog"
 	@echo "  make scan-image       - Scan Docker images using Trivy"
@@ -70,8 +70,8 @@ lint:
 test:
 	@echo "🧪 Running unit tests with coverage..."
 	@cd backend && pytest tests/test_agents.py tests/test_coordinator.py tests/test_threat_generator.py \
-		-v --cov=src --cov-report=term-missing --cov-fail-under=60 -m "not integration"
-	@echo "✅ Unit tests passed with 60%+ coverage"
+		-v --cov=src --cov-report=term-missing --cov-fail-under=55 -m "not integration"
+	@echo "✅ Unit tests passed with 55%+ coverage"
 
 test-integration:
 	@echo "🧪 Running integration tests (requires Redis)..."

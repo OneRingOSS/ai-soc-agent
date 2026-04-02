@@ -4,7 +4,7 @@ Phase 1: Context Agent attack vector simulation.
 Phase 2: Historical Agent attack vector simulation.
 """
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 from datetime import datetime, timedelta
 
 from models import ThreatSignal, ThreatType

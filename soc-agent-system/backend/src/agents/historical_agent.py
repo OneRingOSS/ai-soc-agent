@@ -1,5 +1,5 @@
 """Historical Agent - Pattern recognition specialist."""
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List
 from agents.base_agent import BaseAgent
 from models import ThreatSignal, IntelMatch
 import logging
@@ -116,7 +116,7 @@ Analyze patterns, identify if this is a recurring issue, and provide insights fr
             import json
             try:
                 raw_data = json.loads(analysis_result.raw_output) if analysis_result.raw_output else {}
-            except:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 raw_data = {}
 
             if "metadata" not in raw_data:
@@ -175,7 +175,7 @@ Analyze patterns, identify if this is a recurring issue, and provide insights fr
             import json
             try:
                 raw_data = json.loads(analysis_result.raw_output) if analysis_result.raw_output else {}
-            except:
+            except (json.JSONDecodeError, ValueError, TypeError):
                 raw_data = {}
 
             if "metadata" not in raw_data:

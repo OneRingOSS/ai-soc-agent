@@ -268,7 +268,7 @@ class CoordinatorAgent:
                     logger.info(f"      Anomalies: {len(adversarial_result.anomalies)}")
                     logger.info(f"      Recommendation: {adversarial_result.recommendation}")
                 else:
-                    logger.info(f"   ✓ Adversarial Detection: No manipulation detected")
+                    logger.info("   ✓ Adversarial Detection: No manipulation detected")
 
             # 4. Generate Response Plan
             with tracer.start_as_current_span("response_engine"):

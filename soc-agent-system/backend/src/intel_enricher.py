@@ -100,10 +100,10 @@ class IntelEnricher:
         cached_result = await self.cache.get(cache_key)
         
         if cached_result:
-            logger.debug(f"VT enrichment: Redis cache HIT — returning cached result")
+            logger.debug("VT enrichment: Redis cache HIT — returning cached result")
             return [IntelMatch(**cached_result)]
         
-        logger.debug(f"VT enrichment: Redis cache MISS — checking VirusTotal")
+        logger.debug("VT enrichment: Redis cache MISS — checking VirusTotal")
         
         # Step 4: Check VirusTotal (or return demo data)
         intel_match = await self._check_virustotal(package_name, sha256_hash)
@@ -135,7 +135,7 @@ class IntelEnricher:
         """
         # DEMO_MODE: Return pre-seeded data
         if self.demo_mode:
-            logger.debug(f"VT enrichment: DEMO_MODE active — returning pre-seeded result")
+            logger.debug("VT enrichment: DEMO_MODE active — returning pre-seeded result")
             
             # Try to get from cache (should be pre-seeded)
             cache_key = f"vt:pkg:{package_name}"
@@ -165,11 +165,11 @@ class IntelEnricher:
                 )
             
             if response.status_code == 404:
-                logger.debug(f"VT enrichment: hash not found in VT (404) — returning None")
+                logger.debug("VT enrichment: hash not found in VT (404) — returning None")
                 return None
             
             if response.status_code == 429:
-                logger.warning(f"VT enrichment: rate limit exceeded (429) — returning None")
+                logger.warning("VT enrichment: rate limit exceeded (429) — returning None")
                 return None
             
             if response.status_code != 200:
@@ -189,7 +189,7 @@ class IntelEnricher:
             
             # Only return match if flagged by at least one engine
             if malicious + suspicious == 0:
-                logger.debug(f"VT enrichment: 0 detections — returning None")
+                logger.debug("VT enrichment: 0 detections — returning None")
                 return None
             
             # Extract threat label
