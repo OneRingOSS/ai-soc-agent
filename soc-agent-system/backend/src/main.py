@@ -1,6 +1,7 @@
 """FastAPI application for SOC Agent System."""
 import asyncio
 import json
+import os  # Tier 1F: for build_redis_url()
 from datetime import datetime
 from typing import List, Dict, Optional
 from contextlib import asynccontextmanager
