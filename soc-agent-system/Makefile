@@ -33,7 +33,7 @@
 #
 # ============================================================================
 
-.PHONY: help lint test test-integration scan-secrets scan-image validate-lockfile quality-gate build up down clean demo all
+.PHONY: help lint test test-integration scan-secrets scan-dependencies scan-image validate-lockfile quality-gate build up down clean demo all
 
 # Default target
 help:
@@ -82,6 +82,17 @@ scan-secrets:
 	@trufflehog filesystem . --only-verified --fail --exclude-paths=.trufflehog-exclude.txt || \
 		(echo "⚠️  Secrets found! Check output above." && exit 1)
 	@echo "✅ No secrets found"
+
+scan-dependencies: ## Scan Python dependencies for known CVEs
+	@echo "🔍 Scanning Python dependencies with pip-audit..."
+	@cd backend && source venv/bin/activate && pip-audit -r requirements.txt --format columns \
+		--ignore-vuln GHSA-gc5v-m9x4-r6x2 \
+		--ignore-vuln GHSA-w853-jp5j-5j7f \
+		--ignore-vuln GHSA-qmgc-5h2g-mvrw \
+		--ignore-vuln GHSA-f96h-pmfr-66vw \
+		--ignore-vuln GHSA-2c2j-9gv5-cj73 || \
+		(echo "⚠️  Unexpected vulnerabilities found! Review output above" && exit 1)
+	@echo "✅ Dependency scan complete (known issues documented in .pip-audit-ignore.yaml)"
 
 scan-image:
 	@echo "🐳 Scanning Docker images for vulnerabilities..."
