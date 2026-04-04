@@ -31,6 +31,28 @@ setup_json_logging("INFO")
 logger = get_logger(__name__)
 
 
+def build_redis_url() -> str:
+    """
+    Construct Redis URL from environment variables.
+    Mirrors the OPENAI_API_KEY pattern: read from env, never hardcode.
+
+    Priority:
+    1. REDIS_URL if it already contains credentials (for backward compat)
+    2. REDIS_PASSWORD + base REDIS_URL (preferred for K8s + local parity)
+    3. Plain REDIS_URL with no auth (local dev default)
+    """
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    redis_password = os.getenv("REDIS_PASSWORD", "").strip()
+
+    if redis_password and "://" in redis_url:
+        # Inject password: redis://localhost:6379 -> redis://:password@localhost:6379
+        if "@" not in redis_url:
+            scheme, rest = redis_url.split("://", 1)
+            redis_url = f"{scheme}://:{redis_password}@{rest}"
+
+    return redis_url
+
+
 # Threat store (Redis or in-memory fallback)
 threat_store: Optional[ThreatStore] = None
 intel_cache = None  # Intel feed cache for VT enrichment
@@ -65,8 +87,16 @@ async def lifespan(app: FastAPI):
     init_telemetry()
 
     # Initialize threat store (Redis or in-memory fallback)
-    logger.info(f"   Initializing threat store (Redis URL: {settings.redis_url})...")
-    threat_store = await create_store(settings.redis_url, settings.max_stored_threats)
+    # Use build_redis_url() to inject REDIS_PASSWORD from env (Tier 1F)
+    redis_url = build_redis_url()
+    # Mask password in logs: redis://:pass@host -> redis://***@host
+    if "@" in redis_url:
+        scheme_and_auth, host_part = redis_url.split("@", 1)
+        masked_url = f"{scheme_and_auth.split(':')[0]}://***@{host_part}"
+    else:
+        masked_url = redis_url
+    logger.info(f"   Initializing threat store (Redis URL: {masked_url})...")
+    threat_store = await create_store(redis_url, settings.max_stored_threats)
     set_store(threat_store)
 
     # Initialize intel cache for VT enrichment (Wave 5)
