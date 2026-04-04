@@ -33,7 +33,7 @@
 #
 # ============================================================================
 
-.PHONY: help lint test test-integration scan-secrets scan-dependencies scan-image validate-lockfile quality-gate build up down clean demo all
+.PHONY: help lint test test-integration scan-secrets scan-dependencies scan-workflows scan-image validate-lockfile quality-gate build up down clean demo all
 
 # Default target
 help:
@@ -93,6 +93,11 @@ scan-dependencies: ## Scan Python dependencies for known CVEs
 		--ignore-vuln GHSA-2c2j-9gv5-cj73 || \
 		(echo "⚠️  Unexpected vulnerabilities found! Review output above" && exit 1)
 	@echo "✅ Dependency scan complete (known issues documented in .pip-audit-ignore.yaml)"
+
+scan-workflows: ## Scan GitHub Actions workflows for security issues
+	@echo "🔍 Scanning GitHub workflows with zizmor..."
+	@cd backend && source venv/bin/activate && zizmor ../../.github/workflows/ || true
+	@echo "✅ Workflow scan complete (findings above are tracked for Tier 1B)"
 
 scan-image:
 	@echo "🐳 Scanning Docker images for vulnerabilities..."
