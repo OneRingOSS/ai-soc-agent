@@ -3,6 +3,7 @@
 Phase 1: Context Agent attack vector detection.
 Phase 2: Historical Agent attack vector detection.
 Phase 3: Coordinated multi-agent attack detection + ensemble validation.
+Tier 3A: Infrastructure vs Historical contradiction (egress violations).
 """
 import logging
 from typing import Dict, List, Optional, Any
@@ -11,6 +12,7 @@ from models import (
     ThreatSignal, AgentAnalysis, ThreatSeverity,
     Contradiction, Anomaly, AdversarialDetectionResult
 )
+from security.egress_monitor import has_recent_violations, get_recent_violations  # Tier 3A
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +130,13 @@ class AdversarialManipulationDetector:
             )
             if note_anomaly:
                 anomalies.append(note_anomaly)
+
+        # TIER 3A: Infrastructure vs Historical contradiction (egress violations)
+        infra_contradiction = self._check_infrastructure_historical_contradiction(
+            agent_analyses, severity
+        )
+        if infra_contradiction:
+            contradictions.append(infra_contradiction)
 
         # PHASE 3: Coordinated attack detection + ensemble validation
         coordinated_attack = self._check_coordinated_attack(
@@ -768,6 +777,66 @@ class AdversarialManipulationDetector:
                     "consensus_severity": consensus_severity,
                     "consensus_count": max_votes,
                     "consensus_agents": consensus_agents
+                }
+            )
+
+        return None
+
+    def _check_infrastructure_historical_contradiction(
+        self,
+        agent_analyses: Dict[str, AgentAnalysis],
+        severity: ThreatSeverity
+    ) -> Optional[Contradiction]:
+        """Check if Infrastructure contradicts Historical Agent (Tier 3A).
+
+        Attack scenario: Historical Agent says "benign/FP" but NetworkPolicy
+        blocks suspicious egress attempts from the same pod/customer.
+        This is a strong signal of historical note poisoning.
+
+        Args:
+            agent_analyses: Dictionary of agent analyses
+            severity: The determined threat severity
+
+        Returns:
+            Contradiction if detected, None otherwise
+        """
+        historical_analysis = agent_analyses.get("Historical Agent")
+
+        if not historical_analysis:
+            return None
+
+        # Check if Historical suggests benign/FP
+        analysis_lower = historical_analysis.analysis.lower()
+        historical_suggests_benign = (
+            "false positive" in analysis_lower or
+            "benign" in analysis_lower or
+            "not a threat" in analysis_lower or
+            "likely fp" in analysis_lower
+        )
+
+        # Check if infrastructure detected recent egress violations
+        if historical_suggests_benign and has_recent_violations(threshold_seconds=3600):
+            # Get recent violations for context
+            violations = get_recent_violations(max_count=5)
+            violation_summary = "; ".join([
+                f"{v.source_pod}->{v.attempted_destination} (blocked by {v.blocked_by})"
+                for v in violations[:3]  # First 3 for brevity
+            ])
+
+            return Contradiction(
+                agents=["Historical Agent", "Infrastructure/NetworkPolicy"],
+                description=(
+                    f"Historical Agent suggests benign/FP (confidence: {historical_analysis.confidence:.2f}) "
+                    f"but NetworkPolicy detected {len(violations)} recent egress violation(s): {violation_summary}. "
+                    f"This strong infrastructure signal contradicts historical assessment, "
+                    f"indicating possible historical note poisoning."
+                ),
+                severity_mismatch=True,
+                confidence=0.9,  # Very high confidence - infrastructure doesn't lie
+                metadata={
+                    "violation_count": len(violations),
+                    "violations": [v.dict() for v in violations[:5]],
+                    "historical_analysis_snippet": historical_analysis.analysis[:200]
                 }
             )
 
