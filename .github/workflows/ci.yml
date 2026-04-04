@@ -27,7 +27,12 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install ruff pytest pytest-cov
-      
+
+      - name: Install frontend dependencies
+        run: |
+          cd soc-agent-system/frontend
+          npm ci --ignore-scripts
+
       - name: Install TruffleHog
         run: |
           curl -sSfL https://raw.githubusercontent.com/trufflesecurity/trufflehog/main/scripts/install.sh | sh -s -- -b /usr/local/bin
@@ -73,7 +78,22 @@ jobs:
         run: |
           cd soc-agent-system
           make scan-secrets
-      
+
+      - name: Run dependency scanning
+        run: |
+          cd soc-agent-system
+          make scan-dependencies
+
+      - name: Run workflow security scanning
+        run: |
+          cd soc-agent-system
+          make scan-workflows
+
+      - name: Validate npm lockfile
+        run: |
+          cd soc-agent-system
+          make validate-lockfile
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       
@@ -101,10 +121,20 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Quality Gate Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Linting: Passed" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Unit Tests: Passed" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Secret Scanning: Passed" >> $GITHUB_STEP_SUMMARY
-          echo "- ✅ Image Scanning: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Linting (ruff): Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Unit Tests (pytest): Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Secret Scanning (TruffleHog): Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Dependency Scanning (pip-audit): Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Workflow Scanning (zizmor): Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ npm Lockfile Validation: Passed" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Image Scanning (Trivy): Passed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Supply Chain Hardening (Tier 1-3A)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ SHA-pinned GitHub Actions" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ npm --ignore-scripts hardening" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Python CVE scanning enabled" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Workflow security analysis enabled" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Artifacts" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
