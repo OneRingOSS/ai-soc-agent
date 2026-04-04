@@ -18,6 +18,7 @@ spec:
         release: {{ .Release.Name }}
         {{- include "soc-agent.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "soc-agent.fullname" . }}-redis  # Tier 1I: Least-privilege ServiceAccount
       containers:
         - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"

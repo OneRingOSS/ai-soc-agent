@@ -22,6 +22,7 @@ spec:
         release: {{ .Release.Name }}
         {{- include "soc-agent.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "soc-agent.fullname" . }}-backend  # Tier 1I: Least-privilege ServiceAccount
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
