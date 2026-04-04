@@ -1,0 +1,137 @@
+# NetworkPolicy: Deny-all egress with explicit allowlist
+# Tier 2A: Zero-trust network posture — blocks unauthorized outbound connections
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soc-backend-egress
+  labels:
+    {{- include "soc-agent.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "soc-agent.name" . }}
+      app.kubernetes.io/component: backend
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution (required for all external API calls)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow Redis connection within namespace
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "soc-agent.name" . }}
+              app.kubernetes.io/component: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+
+    # Allow HTTPS egress to OpenAI API (api.openai.com)
+    # Using IP ranges instead of FQDN to prevent DNS rebinding
+    # OpenAI IPs: 104.18.0.0/15, 172.64.0.0/13 (Cloudflare CDN)
+    - to:
+        - ipBlock:
+            cidr: 104.18.0.0/15
+        - ipBlock:
+            cidr: 172.64.0.0/13
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # Allow HTTPS egress to VirusTotal API (www.virustotal.com)
+    # VirusTotal IPs: 142.250.0.0/15, 172.217.0.0/16 (Google CDN)
+    - to:
+        - ipBlock:
+            cidr: 142.250.0.0/15
+        - ipBlock:
+            cidr: 172.217.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+
+    # IMPORTANT: Block AWS IMDS to prevent cloud metadata exfiltration
+    # This is defined as an exception (what NOT to allow in broader CIDR)
+    # 169.254.169.254 is the AWS instance metadata service endpoint
+    # Blocked via tight IP allowlisting above (no 0.0.0.0/0 rule)
+    # Testing: grep "169.254.169.254" confirms this IP is NOT in any ipBlock.cidr
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soc-frontend-egress
+  labels:
+    {{- include "soc-agent.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "soc-agent.name" . }}
+      app.kubernetes.io/component: frontend
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow connection to backend API
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "soc-agent.name" . }}
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: 8000
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: soc-redis-egress
+  labels:
+    {{- include "soc-agent.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "soc-agent.name" . }}
+      app.kubernetes.io/component: redis
+  policyTypes:
+    - Egress
+  egress:
+    # Redis typically doesn't need egress, but allow DNS for cluster operations
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
