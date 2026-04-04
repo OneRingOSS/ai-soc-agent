@@ -12,8 +12,9 @@ FROM node:20-slim AS builder
 WORKDIR /app
 
 # Copy package files and install dependencies (including devDependencies for build)
+# --ignore-scripts flag blocks postinstall hook execution (CanisterWorm mitigation)
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 
 # Copy source code and build
 COPY . .

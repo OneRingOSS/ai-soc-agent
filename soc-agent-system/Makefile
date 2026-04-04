@@ -33,7 +33,7 @@
 #
 # ============================================================================
 
-.PHONY: help lint test test-integration scan-secrets scan-image quality-gate build up down clean demo all
+.PHONY: help lint test test-integration scan-secrets scan-image validate-lockfile quality-gate build up down clean demo all
 
 # Default target
 help:
@@ -90,6 +90,11 @@ scan-image:
 	@echo "Scanning frontend image..."
 	@trivy image soc-frontend:latest --severity CRITICAL --exit-code 1
 	@echo "✅ No critical vulnerabilities found"
+
+validate-lockfile: ## Verify package-lock.json is consistent
+	@echo "📦 Validating frontend lockfile..."
+	@cd frontend && npm ci --ignore-scripts --dry-run
+	@echo "✅ Lockfile valid"
 
 quality-gate: lint test scan-secrets scan-image
 	@echo ""
