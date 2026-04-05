@@ -111,11 +111,20 @@ validate-lockfile: ## Verify package-lock.json is consistent
 	@cd frontend && npm ci --ignore-scripts --dry-run
 	@echo "✅ Lockfile valid"
 
-quality-gate: lint test scan-secrets scan-image
+quality-gate: lint test scan-secrets scan-dependencies scan-workflows validate-lockfile scan-image
 	@echo ""
 	@echo "✅ ============================================"
-	@echo "✅  ALL QUALITY GATES PASSED"
+	@echo "✅  ALL QUALITY GATES PASSED (8 checks)"
 	@echo "✅ ============================================"
+	@echo ""
+	@echo "Security checks executed:"
+	@echo "  ✅ Code linting (ruff)"
+	@echo "  ✅ Unit tests (pytest)"
+	@echo "  ✅ Secret scanning (TruffleHog)"
+	@echo "  ✅ Dependency scanning (pip-audit)"
+	@echo "  ✅ Workflow scanning (zizmor)"
+	@echo "  ✅ npm lockfile validation"
+	@echo "  ✅ Container scanning (Trivy)"
 	@echo ""
 
 # ============================================================================
