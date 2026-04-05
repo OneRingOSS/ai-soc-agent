@@ -52,6 +52,8 @@ backend:
     LOG_LEVEL: "INFO"
     # Mock mode - disable OpenAI API calls for development
     FORCE_MOCK_MODE: "true"
+    # Demo mode - use pre-seeded VT data instead of calling VT API
+    DEMO_MODE: "true"
     # Disable auto threat generation to prevent resource exhaustion
     ENABLE_AUTO_THREAT_GENERATION: "false"
     THREAT_GENERATION_INTERVAL: "30"
