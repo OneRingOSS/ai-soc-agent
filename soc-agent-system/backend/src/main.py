@@ -496,6 +496,88 @@ async def list_egress_violations(
     }
 
 
+@app.post("/api/demo/reset")
+async def reset_demo_state():
+    """
+    Reset demo state - clear all threats and historical data from Redis.
+
+    Use this between demo runs to prevent:
+    - Historical note poisoning false positives
+    - Stale threat data cluttering the dashboard
+    - AdversarialDetector state pollution
+
+    Preserves:
+    - VT cache (demo malware data)
+    - Configuration
+
+    Returns:
+        Summary of what was cleared
+    """
+    logger.info("[DEMO_RESET] Starting demo state reset...")
+
+    # Get Redis connection
+    redis_client = threat_store.redis if hasattr(threat_store, 'redis') else None
+
+    if redis_client is None:
+        logger.warning("[DEMO_RESET] Using in-memory store - no Redis cleanup needed")
+        # Clear in-memory store
+        if hasattr(threat_store, 'threats'):
+            cleared_count = len(threat_store.threats)
+            threat_store.threats.clear()
+            threat_store.total_count = 0
+            return {
+                "status": "success",
+                "storage": "in-memory",
+                "cleared": {
+                    "threats": cleared_count,
+                    "redis_keys": 0
+                },
+                "message": "In-memory threat store cleared"
+            }
+
+    # Redis cleanup
+    await threat_store._ensure_connected()
+
+    # Count keys before cleanup
+    threat_keys = await redis_client.keys("threat:*")
+    historical_keys = await redis_client.keys("historical:*")
+    incident_keys = await redis_client.keys("incidents:*")
+
+    # Delete threat data
+    deleted_count = 0
+    if threat_keys:
+        deleted_count += await redis_client.delete(*threat_keys)
+    if historical_keys:
+        deleted_count += await redis_client.delete(*historical_keys)
+    if incident_keys:
+        deleted_count += await redis_client.delete(*incident_keys)
+
+    # Delete sorted set and counter
+    await redis_client.delete("threats:by_created")
+    await redis_client.delete("threats:total_count")
+    deleted_count += 2
+
+    logger.info(
+        f"[DEMO_RESET] Cleared {len(threat_keys)} threats, "
+        f"{len(historical_keys)} historical, {len(incident_keys)} incidents"
+    )
+
+    return {
+        "status": "success",
+        "storage": "redis",
+        "cleared": {
+            "threat_keys": len(threat_keys),
+            "historical_keys": len(historical_keys),
+            "incident_keys": len(incident_keys),
+            "total_redis_keys": deleted_count
+        },
+        "preserved": {
+            "vt_cache": "vt:pkg:* keys preserved (demo malware data)"
+        },
+        "message": "Demo state reset complete. Frontend will show no threats."
+    }
+
+
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time threat streaming via Redis Pub/Sub."""
