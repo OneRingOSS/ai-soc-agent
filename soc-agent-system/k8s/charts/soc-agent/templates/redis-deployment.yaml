@@ -19,10 +19,26 @@ spec:
         {{- include "soc-agent.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "soc-agent.fullname" . }}-redis  # Tier 1I: Least-privilege ServiceAccount
+      securityContext:  # P1.2: Pod-level security context
+        runAsNonRoot: true
+        runAsUser: 999  # redis user
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          securityContext:  # P1.2: Container-level security context
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 999
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false  # redis needs write to /data
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: redis
               containerPort: 6379
