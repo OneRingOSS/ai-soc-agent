@@ -338,6 +338,18 @@ async def trigger_threat(request: TriggerRequest):
             adversarial_detector_enabled=detector_enabled
         )
 
+        # Validate scenario + detector state consistency
+        if request.adversarial_scenario == "note_poisoning_bypass" and detector_enabled:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid combination: note_poisoning_bypass requires adversarial_detector_enabled=false (ACT1 = detector disabled)"
+            )
+        if request.adversarial_scenario == "note_poisoning_catch" and not detector_enabled:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid combination: note_poisoning_catch requires adversarial_detector_enabled=true (ACT2 = detector enabled)"
+            )
+
         # Generate adversarial attack based on scenario
         if request.adversarial_scenario == "note_poisoning_bypass":
             # ACT 1: Detector disabled
