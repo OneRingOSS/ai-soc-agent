@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod
+  namespace: soc-agent-demo
+spec:
+  automountServiceAccountToken: true    # ❌ VIOLATES: OPA constraint - no auto-mount SA token
+  containers:
+  - name: bad-container
+    image: nginx:latest
+    # ❌ VIOLATES: Missing securityContext.seccompProfile
+    # ❌ VIOLATES: Missing resources.limits
+    ports:
+    - containerPort: 80
+
+# This pod will be REJECTED by OPA Gatekeeper with errors like:
+# 
+# Error from server: error when creating "bad-pod.yaml": admission webhook "validation.gatekeeper.sh" denied the request: 
+# [deny-serviceaccount-automount] Pod bad-pod automounts service account token
+# [require-seccomp-profile] Pod bad-pod container bad-container must set securityContext.seccompProfile
+# [require-resource-limits] Pod bad-pod container bad-container must set resources.limits
+#
+# Use in demo:
+#   kubectl apply -f soc-agent-system/k8s/demo-artifacts/bad-pod.yaml
+#   # Shows OPA Gatekeeper blocking non-compliant workloads
