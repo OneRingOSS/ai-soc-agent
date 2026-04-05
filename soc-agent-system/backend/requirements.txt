@@ -6,7 +6,7 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 
 # OpenAI
-openai==1.10.0
+openai==2.30.0
 
 # WebSocket support
 websockets==12.0
