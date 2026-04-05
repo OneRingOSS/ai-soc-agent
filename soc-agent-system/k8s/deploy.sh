@@ -143,5 +143,47 @@ echo "To view logs:  kubectl logs -l app=soc-backend --tail=50 -f"
 echo "To check HPA:  kubectl get hpa -w"
 echo "To teardown:   ./teardown.sh"
 echo ""
+
+# -------------------------------------------------------
+# Step 9: Configure OpenAI API key (if .env exists)
+# -------------------------------------------------------
+echo "Step 9: Configuring OpenAI API key (for live mode)..."
+ENV_FILE="$SCRIPT_DIR/../backend/.env"
+
+if [ -f "$ENV_FILE" ]; then
+    echo "  Found .env file, loading..."
+    source "$ENV_FILE"
+
+    if [ -n "$OPENAI_API_KEY" ]; then
+        echo "  Creating Kubernetes secret..."
+        kubectl delete secret openai-api-key -n soc-agent-demo --ignore-not-found
+        kubectl create secret generic openai-api-key \
+            --from-literal=OPENAI_API_KEY="$OPENAI_API_KEY" \
+            -n soc-agent-demo
+
+        kubectl set env deployment/soc-agent-backend \
+            --from=secret/openai-api-key \
+            -n soc-agent-demo
+
+        echo "  Waiting for backend to restart with OpenAI key..."
+        kubectl rollout status deployment/soc-agent-backend -n soc-agent-demo --timeout=120s
+
+        echo "✅ OpenAI API key configured (live mode enabled)"
+    else
+        echo "⚠️  OPENAI_API_KEY not found in .env file"
+        echo "   Backend will run in mock mode"
+    fi
+else
+    echo "⚠️  .env file not found at $ENV_FILE"
+    echo "   Backend will run in mock mode"
+    echo "   To enable live mode, run: bash setup-openai-secret.sh"
+fi
+echo ""
+
 echo "✨ All services ready! VirusTotal enrichment and observability enabled by default."
+echo ""
+echo "Mode Configuration:"
+echo "  - OpenAI LLM: $([ -n "$OPENAI_API_KEY" ] && echo "✅ LIVE (real API calls)" || echo "⚠️  MOCK (no API calls)")"
+echo "  - VT Enrichment: ✅ CACHE (demo mode, 3 packages pre-seeded)"
+echo ""
 
