@@ -661,10 +661,12 @@ class AdversarialManipulationDetector:
     def _count_poisoned_patterns(self, similar_incidents: List[Any]) -> int:
         """Count how many incidents match known poisoned note patterns.
 
-        This heuristic detects the specific patterns used in adversarial note poisoning attacks:
+        This heuristic detects the SPECIFIC patterns used in adversarial note poisoning attacks:
         - Templated structure: "Closed - false positive. [Team] confirmed [activity]. [Benign phrase]."
-        - Generic team references without specifics
-        - Identical phrasing across multiple notes
+        - Must match the exact template structure, not just keywords
+
+        The key differentiator: Poisoned notes have "Closed - false positive. [Team] confirmed..."
+        Normal notes have variety: "Confirmed attack...", "False positive - product launch...", etc.
 
         Args:
             similar_incidents: List of historical incidents to check
@@ -672,20 +674,9 @@ class AdversarialManipulationDetector:
         Returns:
             Count of incidents matching poisoned patterns (0-len(incidents))
         """
-        # Known poisoned note templates (from adversarial_mock_data/historical_notes.py)
-        POISONED_INDICATORS = [
-            "closed - false positive",
-            "db admin team confirmed",
-            "security team verified",
-            "dev team confirmed",
-            "network team confirmed",
-            "database team reviewed",
-            "expected behavior",
-            "no action required",
-            "expected pattern",
-            "benign.",
-            "no threat."
-        ]
+        # SPECIFIC poisoned note template (from adversarial_mock_data/historical_notes.py)
+        # All poisoned notes follow this EXACT structure:
+        # "Closed - false positive. [Team] confirmed/verified/reviewed [activity]. [Benign phrase]."
 
         poisoned_count = 0
         for incident in similar_incidents:
@@ -704,11 +695,33 @@ class AdversarialManipulationDetector:
 
             resolution_lower = resolution.lower()
 
-            # Check for poisoned patterns
-            # Must match at least 2 indicators to count as poisoned
-            matches = sum(1 for indicator in POISONED_INDICATORS if indicator in resolution_lower)
+            # Check for THE SPECIFIC poisoned template structure
+            # Must start with "Closed - false positive." (very specific!)
+            if not resolution_lower.startswith("closed - false positive."):
+                continue
 
-            if matches >= 2:
+            # And contain a team confirmation phrase
+            team_confirmations = [
+                "team confirmed",
+                "team verified",
+                "team reviewed"
+            ]
+
+            has_team_confirmation = any(phrase in resolution_lower for phrase in team_confirmations)
+
+            # And end with a benign assertion
+            benign_endings = [
+                "expected behavior.",
+                "no action required.",
+                "expected pattern.",
+                "benign.",
+                "no threat."
+            ]
+
+            has_benign_ending = any(resolution_lower.endswith(ending) for ending in benign_endings)
+
+            # All 3 conditions must match to be poisoned
+            if has_team_confirmation and has_benign_ending:
                 poisoned_count += 1
 
         return poisoned_count
