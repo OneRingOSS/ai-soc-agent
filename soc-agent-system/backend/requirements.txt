@@ -1,5 +1,5 @@
 # FastAPI and async dependencies
-fastapi==0.109.1
+fastapi==0.135.3
 uvicorn[standard]==0.27.0
 python-dotenv==1.0.0
 pydantic==2.5.3
