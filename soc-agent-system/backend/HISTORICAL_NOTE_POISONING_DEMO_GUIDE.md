@@ -24,6 +24,20 @@ cd soc-agent-system/k8s
 ./deploy.sh
 ```
 
+**Start Observability Dashboards** (if needed after system reboot):
+```bash
+# From the project root, run the dashboard startup script
+./start-dashboards.sh
+
+# This will start port-forwarding for:
+# - Grafana: http://localhost:3000
+# - Prometheus: http://localhost:9090
+# - AlertManager: http://localhost:9093
+# - Jaeger: http://localhost:16686
+```
+
+> **Note**: The Kind cluster persists across reboots, but port-forwards don't. Run `./start-dashboards.sh` after any system reboot to restore dashboard access.
+
 #### Run the Demo
 
 **From your local machine** (not inside the cluster), run these curl commands:

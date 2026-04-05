@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 from agents.base_agent import BaseAgent
 from models import ThreatSignal, IntelMatch
 import logging
+from security.input_sanitizer import sanitize_for_prompt  # Tier 2B
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +53,11 @@ Respond in JSON format with:
         """Build user prompt with threat and historical context."""
         similar_incidents = context.get("similar_incidents", [])
 
+        # Tier 2B: Sanitize resolution notes to prevent prompt injection
         incidents_text = "\n".join([
             f"- {inc.timestamp.isoformat()}: {inc.customer_name} - {inc.threat_type.value} - "
-            f"Resolution: {inc.resolution} (False positive: {inc.was_false_positive})"
+            f"Resolution: {sanitize_for_prompt(inc.resolution, 'historical_resolution', inc.id)} "
+            f"(False positive: {inc.was_false_positive})"
             for inc in similar_incidents
         ]) if similar_incidents else "No similar incidents found"
 

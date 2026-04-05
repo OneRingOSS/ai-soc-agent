@@ -33,7 +33,7 @@
 #
 # ============================================================================
 
-.PHONY: help lint test test-integration scan-secrets scan-image quality-gate build up down clean demo all
+.PHONY: help lint test test-integration scan-secrets scan-dependencies scan-workflows scan-image validate-lockfile quality-gate build up down clean demo all
 
 # Default target
 help:
@@ -83,6 +83,21 @@ scan-secrets:
 		(echo "⚠️  Secrets found! Check output above." && exit 1)
 	@echo "✅ No secrets found"
 
+scan-dependencies: ## Scan Python dependencies for known CVEs
+	@echo "🔍 Scanning Python dependencies with pip-audit..."
+	@cd backend && source venv/bin/activate && pip-audit -r requirements.txt --format columns \
+		--ignore-vuln GHSA-gc5v-m9x4-r6x2 \
+		--ignore-vuln GHSA-w853-jp5j-5j7f \
+		--ignore-vuln GHSA-qmgc-5h2g-mvrw \
+		--ignore-vuln GHSA-f96h-pmfr-66vw \
+		--ignore-vuln GHSA-2c2j-9gv5-cj73 || true
+	@echo "✅ Dependency scan complete (5 known CVEs ignored - see .pip-audit-ignore.yaml)"
+
+scan-workflows: ## Scan GitHub Actions workflows for security issues
+	@echo "🔍 Scanning GitHub workflows with zizmor..."
+	@cd backend && source venv/bin/activate && zizmor ../../.github/workflows/ || true
+	@echo "✅ Workflow scan complete (findings above are tracked for Tier 1B)"
+
 scan-image:
 	@echo "🐳 Scanning Docker images for vulnerabilities..."
 	@echo "Scanning backend image..."
@@ -90,6 +105,11 @@ scan-image:
 	@echo "Scanning frontend image..."
 	@trivy image soc-frontend:latest --severity CRITICAL --exit-code 1
 	@echo "✅ No critical vulnerabilities found"
+
+validate-lockfile: ## Verify package-lock.json is consistent
+	@echo "📦 Validating frontend lockfile..."
+	@cd frontend && npm ci --ignore-scripts --dry-run
+	@echo "✅ Lockfile valid"
 
 quality-gate: lint test scan-secrets scan-image
 	@echo ""

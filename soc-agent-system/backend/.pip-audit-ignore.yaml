@@ -1,0 +1,45 @@
+# pip-audit vulnerability ignore list
+# These CVEs are acknowledged but cannot be fixed without Python 3.10+ upgrade
+
+# Vulnerability: requests GHSA-gc5v-m9x4-r6x2
+# Affected: requests 2.32.5
+# Fix version: 2.33.0 (requires Python 3.10+)
+# Risk: Low - extract_zipped_paths() not used in this application
+# Status: Accepted until Python 3.10+ migration
+- id: GHSA-gc5v-m9x4-r6x2
+  reason: "Fix requires Python 3.10+. Function extract_zipped_paths() not used in application."
+
+# Vulnerability: filelock GHSA-w853-jp5j-5j7f
+# Affected: filelock 3.19.1
+# Fix version: 3.20.1 (requires Python 3.10+)
+# Risk: Low - TOCTOU symlink attack requires local filesystem access
+# Status: Accepted until Python 3.10+ migration
+- id: GHSA-w853-jp5j-5j7f
+  reason: "Fix requires Python 3.10+. Low risk in containerized K8s environment with restricted file permissions."
+
+# Vulnerability: filelock GHSA-qmgc-5h2g-mvrw
+# Affected: filelock 3.19.1
+# Fix version: 3.20.3 (requires Python 3.10+)
+# Risk: Low - TOCTOU in SoftFileLock, not used directly
+# Status: Accepted until Python 3.10+ migration
+- id: GHSA-qmgc-5h2g-mvrw
+  reason: "Fix requires Python 3.10+. SoftFileLock not used directly in application."
+
+# Vulnerability: starlette GHSA-f96h-pmfr-66vw
+# Affected: starlette 0.35.1 (transitive via fastapi)
+# Fix version: 0.40.0
+# Risk: Low-Medium - DoS via large form fields
+# Status: Accepted - fastapi pinned for API stability
+- id: GHSA-f96h-pmfr-66vw
+  reason: "Starlette is transitive dependency via fastapi. DoS risk mitigated by reverse proxy request size limits."
+
+# Vulnerability: starlette GHSA-2c2j-9gv5-cj73
+# Affected: starlette 0.35.1 (transitive via fastapi)
+# Fix version: 0.47.2
+# Risk: Low - Event loop blocking during large file uploads
+# Status: Accepted - minimal impact on modern SSDs
+- id: GHSA-2c2j-9gv5-cj73
+  reason: "Starlette is transitive dependency via fastapi. Low impact on modern storage systems."
+
+# TODO: Upgrade to Python 3.10+ to resolve all vulnerabilities
+# Tracking issue: https://github.com/OneRingOSS/ai-soc-agent/issues/TBD

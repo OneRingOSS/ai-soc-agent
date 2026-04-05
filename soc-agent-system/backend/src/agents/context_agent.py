@@ -2,6 +2,7 @@
 from typing import Any, Dict
 from agents.base_agent import BaseAgent
 from models import ThreatSignal
+from security.input_sanitizer import sanitize_for_prompt  # Tier 2B
 
 
 class ContextAgent(BaseAgent):
@@ -34,9 +35,10 @@ Respond in JSON format with:
     def build_user_prompt(self, signal: ThreatSignal, context: Dict[str, Any]) -> str:
         """Build user prompt with threat and news context."""
         news_items = context.get("news_items", [])
-        
+
+        # Tier 2B: Sanitize news summaries to prevent prompt injection
         news_text = "\n".join([
-            f"- [{n.source}] {n.title}: {n.summary}"
+            f"- [{n.source}] {n.title}: {sanitize_for_prompt(n.summary, 'news_summary', n.source)}"
             for n in news_items
         ]) if news_items else "No relevant news items found"
         

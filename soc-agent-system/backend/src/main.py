@@ -1,6 +1,7 @@
 """FastAPI application for SOC Agent System."""
 import asyncio
 import json
+import os  # Tier 1F: for build_redis_url()
 from datetime import datetime
 from typing import List, Dict, Optional
 from contextlib import asynccontextmanager
@@ -24,11 +25,38 @@ from wazuh_translator import (
     UnsupportedWazuhAlertError,
     WazuhValidationError
 )
+from security.egress_monitor import (  # Tier 3A
+    record_egress_violation,
+    get_recent_violations,
+    EgressViolation
+)
 
 # Configure structured JSON logging
 setup_json_logging("INFO")
 
 logger = get_logger(__name__)
+
+
+def build_redis_url() -> str:
+    """
+    Construct Redis URL from environment variables.
+    Mirrors the OPENAI_API_KEY pattern: read from env, never hardcode.
+
+    Priority:
+    1. REDIS_URL if it already contains credentials (for backward compat)
+    2. REDIS_PASSWORD + base REDIS_URL (preferred for K8s + local parity)
+    3. Plain REDIS_URL with no auth (local dev default)
+    """
+    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+    redis_password = os.getenv("REDIS_PASSWORD", "").strip()
+
+    if redis_password and "://" in redis_url:
+        # Inject password: redis://localhost:6379 -> redis://:password@localhost:6379
+        if "@" not in redis_url:
+            scheme, rest = redis_url.split("://", 1)
+            redis_url = f"{scheme}://:{redis_password}@{rest}"
+
+    return redis_url
 
 
 # Threat store (Redis or in-memory fallback)
@@ -65,8 +93,16 @@ async def lifespan(app: FastAPI):
     init_telemetry()
 
     # Initialize threat store (Redis or in-memory fallback)
-    logger.info(f"   Initializing threat store (Redis URL: {settings.redis_url})...")
-    threat_store = await create_store(settings.redis_url, settings.max_stored_threats)
+    # Use build_redis_url() to inject REDIS_PASSWORD from env (Tier 1F)
+    redis_url = build_redis_url()
+    # Mask password in logs: redis://:pass@host -> redis://***@host
+    if "@" in redis_url:
+        scheme_and_auth, host_part = redis_url.split("@", 1)
+        masked_url = f"{scheme_and_auth.split(':')[0]}://***@{host_part}"
+    else:
+        masked_url = redis_url
+    logger.info(f"   Initializing threat store (Redis URL: {masked_url})...")
+    threat_store = await create_store(redis_url, settings.max_stored_threats)
     set_store(threat_store)
 
     # Initialize intel cache for VT enrichment (Wave 5)
@@ -410,6 +446,54 @@ async def ingest_wazuh_alert(alert: Dict):
     except Exception as e:
         logger.error(f"Unexpected error ingesting Wazuh alert: {e}")
         raise HTTPException(status_code=500, detail={"message": "Internal server error processing Wazuh alert"})
+
+
+@app.post("/api/egress-violations", status_code=202)
+async def ingest_egress_violation(violation: EgressViolation):
+    """
+    Ingest egress violation events from infrastructure telemetry.
+
+    Tier 3A: NetworkPolicy webhook integration.
+    Called when K8s audit logs detect blocked egress attempts.
+    Feeds into AdversarialDetector for infrastructure vs historical contradiction analysis.
+
+    Args:
+        violation: Details of the blocked egress attempt
+
+    Returns:
+        202 Accepted
+    """
+    record_egress_violation(violation)
+    logger.info(
+        f"[EGRESS_VIOLATION_INGESTED] pod={violation.source_pod} "
+        f"dest={violation.attempted_destination} blocked_by={violation.blocked_by}"
+    )
+    return {"status": "accepted", "timestamp": violation.timestamp}
+
+
+@app.get("/api/egress-violations")
+async def list_egress_violations(
+    since: Optional[float] = Query(None, description="Unix timestamp - only return violations after this time"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of violations to return")
+):
+    """
+    List recent egress violations.
+
+    Tier 3A: Used by DevOps/Infrastructure agent and AdversarialDetector.
+
+    Args:
+        since: Optional Unix timestamp (default: last hour)
+        limit: Max violations to return (default: 100)
+
+    Returns:
+        List of egress violations
+    """
+    violations = get_recent_violations(since_timestamp=since, max_count=limit)
+    return {
+        "violations": violations,
+        "count": len(violations),
+        "timestamp": datetime.now().isoformat()
+    }
 
 
 @app.websocket("/ws")

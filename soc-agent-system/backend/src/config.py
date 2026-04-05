@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     max_stored_threats: int = Field(default=100, env="MAX_STORED_THREATS")
 
     # Redis Configuration
+    # Note: redis_url now constructed via build_redis_url() in main.py to inject REDIS_PASSWORD
     redis_url: str = Field(default="redis://localhost:6379", env="REDIS_URL")
 
     # LLM Configuration

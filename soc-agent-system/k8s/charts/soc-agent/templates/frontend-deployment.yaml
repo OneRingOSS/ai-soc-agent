@@ -17,10 +17,27 @@ spec:
         release: {{ .Release.Name }}
         {{- include "soc-agent.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "soc-agent.fullname" . }}-frontend  # Tier 1I: Least-privilege ServiceAccount
+      securityContext:  # P1.2: Pod-level security context
+        runAsNonRoot: true
+        runAsUser: 101  # nginx user
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: frontend
           image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}"
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+          securityContext:  # P1.2: Container-level security context
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 101
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false  # nginx needs write to /var/cache/nginx
+            seccompProfile:
+              type: RuntimeDefault
           env:
             - name: BACKEND_HOST
               value: "{{ include "soc-agent.fullname" . }}-backend"

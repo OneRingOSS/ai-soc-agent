@@ -22,10 +22,27 @@ spec:
         release: {{ .Release.Name }}
         {{- include "soc-agent.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "soc-agent.fullname" . }}-backend  # Tier 1I: Least-privilege ServiceAccount
+      securityContext:  # P1.2: Pod-level security context
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault  # Blocks /proc/pid/mem, ptrace, and other dangerous syscalls
       containers:
         - name: backend
           image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          securityContext:  # P1.2: Container-level security context
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: false  # FastAPI needs write access to /tmp for temp files
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: http
               containerPort: 8000
