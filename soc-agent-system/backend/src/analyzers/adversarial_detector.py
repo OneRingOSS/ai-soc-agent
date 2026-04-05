@@ -124,12 +124,19 @@ class AdversarialManipulationDetector:
 
         # PHASE 2.5: Historical Note Authenticity Check (LLM-based semantic analysis)
         # Use similar_incidents passed from coordinator
+        logger.info(f"🔍 Adversarial Detection Phase 2.5: Note Authenticity Check | similar_incidents_count={len(similar_incidents) if similar_incidents else 0}")
         if similar_incidents and len(similar_incidents) >= 5:
+            logger.info(f"✅ Running note authenticity check (have {len(similar_incidents)} incidents)")
             note_anomaly = self._check_resolution_note_authenticity(
                 signal, similar_incidents, use_mock=self.use_mock
             )
             if note_anomaly:
+                logger.info(f"⚠️ Note fabrication detected! Type: {note_anomaly.type}, Severity: {note_anomaly.severity}")
                 anomalies.append(note_anomaly)
+            else:
+                logger.info("✅ Note authenticity check passed (no fabrication detected)")
+        else:
+            logger.info(f"⏭️ Skipping note authenticity check (need 5+ incidents, have {len(similar_incidents) if similar_incidents else 0})")
 
         # TIER 3A: Infrastructure vs Historical contradiction (egress violations)
         infra_contradiction = self._check_infrastructure_historical_contradiction(
@@ -683,8 +690,13 @@ class AdversarialManipulationDetector:
             resolution = ""
 
             # Extract resolution text from different possible structures
-            if hasattr(incident, 'resolution'):
+            # HistoricalIncident has 'resolution_notes' field (plural!)
+            if hasattr(incident, 'resolution_notes'):
+                resolution = incident.resolution_notes
+            elif hasattr(incident, 'resolution'):
                 resolution = incident.resolution
+            elif isinstance(incident, dict) and 'resolution_notes' in incident:
+                resolution = incident['resolution_notes']
             elif isinstance(incident, dict) and 'resolution' in incident:
                 resolution = incident['resolution']
             else:
