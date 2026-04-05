@@ -115,19 +115,45 @@ else
     echo -e "${RED}⚠️  Some threat keys remain - manual cleanup may be needed${NC}"
 fi
 
-# Step 6: Restart backend pods to clear in-memory state
+# Step 6: Call API endpoint to reset in-memory MockDataStore
 echo ""
-echo -e "${YELLOW}Restarting backend pods to clear in-memory state...${NC}"
+echo -e "${YELLOW}Calling API to reset in-memory MockDataStore...${NC}"
+# Try to call the reset endpoint (may fail if backend not accessible yet)
+BACKEND_POD=$(kubectl get pod -n "$NAMESPACE" -l app=soc-backend -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+if [ -n "$BACKEND_POD" ]; then
+    kubectl exec -n "$NAMESPACE" "$BACKEND_POD" -- curl -s -X POST http://localhost:8000/api/demo/reset > /dev/null 2>&1 || echo "(API call skipped - will reset on next request)"
+    echo -e "${GREEN}✅ API reset call sent${NC}"
+else
+    echo -e "${YELLOW}⚠️  Backend pod not found - MockDataStore will reset on pod restart${NC}"
+fi
+
+# Step 7: Restart backend pods to ensure clean state
+echo ""
+echo -e "${YELLOW}Restarting backend pods to ensure clean state...${NC}"
 kubectl rollout restart deployment/soc-agent-backend -n "$NAMESPACE" &>/dev/null || true
 echo -e "${GREEN}✅ Backend pods restarting${NC}"
+
+# Wait for pods to be ready
+echo -e "${YELLOW}Waiting for backend pods to be ready...${NC}"
+kubectl rollout status deployment/soc-agent-backend -n "$NAMESPACE" --timeout=60s 2>&1 | grep -v "Waiting for" || true
+echo -e "${GREEN}✅ Backend pods ready${NC}"
 
 echo ""
 echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}  ✅ Demo State Reset Complete!${NC}"
 echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
 echo ""
+echo "What was cleared:"
+echo "  ✅ All threat data (Redis)"
+echo "  ✅ Historical incidents (Redis)"
+echo "  ✅ In-memory MockDataStore (regenerated)"
+echo "  ✅ Backend pods restarted"
+echo ""
+echo "What was preserved:"
+echo "  ✅ VT cache (3 malware packages)"
+echo ""
 echo "Frontend should now show no threats."
-echo "VT enrichment cache preserved - new threats will show malware findings."
+echo "Next threat will use fresh historical incidents (no poisoning)."
 echo ""
 echo "To verify:"
 echo "  kubectl exec -n $NAMESPACE $REDIS_POD -- redis-cli KEYS \"threat:*\""

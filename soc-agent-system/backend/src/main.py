@@ -515,9 +515,19 @@ async def reset_demo_state():
     """
     logger.info("[DEMO_RESET] Starting demo state reset...")
 
-    # Get Redis connection
+    # Step 1: Reset in-memory MockDataStore
+    # This is critical - MockDataStore is a singleton that persists between requests
+    from mock_data import MockDataStore, mock_data_store
+
+    # Recreate the singleton's internal state
+    mock_data_store.historical_incidents = mock_data_store._generate_historical_incidents()
+    mock_data_store.infra_events = mock_data_store._generate_infra_events()
+    logger.info("[DEMO_RESET] Regenerated MockDataStore historical incidents")
+
+    # Step 2: Get Redis connection
     redis_client = threat_store.redis if hasattr(threat_store, 'redis') else None
 
+    # Step 3: Handle storage-specific cleanup
     if redis_client is None:
         logger.warning("[DEMO_RESET] Using in-memory store - no Redis cleanup needed")
         # Clear in-memory store
@@ -530,12 +540,13 @@ async def reset_demo_state():
                 "storage": "in-memory",
                 "cleared": {
                     "threats": cleared_count,
-                    "redis_keys": 0
+                    "redis_keys": 0,
+                    "mock_data_reset": True
                 },
-                "message": "In-memory threat store cleared"
+                "message": "In-memory threat store and MockDataStore cleared"
             }
 
-    # Redis cleanup
+    # Step 4: Redis cleanup
     await threat_store._ensure_connected()
 
     # Count keys before cleanup
@@ -559,7 +570,8 @@ async def reset_demo_state():
 
     logger.info(
         f"[DEMO_RESET] Cleared {len(threat_keys)} threats, "
-        f"{len(historical_keys)} historical, {len(incident_keys)} incidents"
+        f"{len(historical_keys)} historical, {len(incident_keys)} incidents, "
+        f"+ regenerated MockDataStore"
     )
 
     return {
@@ -569,12 +581,13 @@ async def reset_demo_state():
             "threat_keys": len(threat_keys),
             "historical_keys": len(historical_keys),
             "incident_keys": len(incident_keys),
-            "total_redis_keys": deleted_count
+            "total_redis_keys": deleted_count,
+            "mock_data_reset": True
         },
         "preserved": {
             "vt_cache": "vt:pkg:* keys preserved (demo malware data)"
         },
-        "message": "Demo state reset complete. Frontend will show no threats."
+        "message": "Demo state reset complete. Frontend will show no threats. MockDataStore regenerated with fresh historical incidents."
     }
 
 
