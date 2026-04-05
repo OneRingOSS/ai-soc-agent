@@ -26,11 +26,21 @@ FROM nginx:alpine
 # Copy built assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+# Copy custom nginx main config (with PID in /tmp for non-root operation)
+COPY nginx-main.conf /etc/nginx/nginx.conf
+
 # Copy nginx configuration template and entrypoint script
 COPY nginx.conf.template /etc/nginx/conf.d/nginx.conf.template
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod +x /docker-entrypoint.sh
+
+# Make nginx directories writable by nginx user (UID 101) for non-root operation
+# Required for P1.2 seccomp hardening (runAsUser: 101)
+RUN chown -R nginx:nginx /etc/nginx && \
+    chown -R nginx:nginx /var/cache/nginx && \
+    chown -R nginx:nginx /var/log/nginx && \
+    chmod -R 755 /etc/nginx
 
 # Expose HTTP port
 EXPOSE 80

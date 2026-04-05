@@ -20,5 +20,7 @@ echo "Nginx configuration generated:"
 cat /etc/nginx/conf.d/default.conf
 
 # Start nginx
+# -g 'daemon off;' keeps nginx in foreground for container
+# PID file location configured in /etc/nginx/nginx.conf
 exec nginx -g 'daemon off;'
 
