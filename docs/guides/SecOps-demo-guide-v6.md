@@ -104,7 +104,7 @@ spec:
 
 ### Verify clean state
 ```bash
-curl http://localhost:8000/health               # Expected: healthy
+curl http://localhost:8080/health               # Expected: healthy
 kubectl get pods -n soc-agent-demo              # Expected: all Running
 kubectl get networkpolicy -n soc-agent-demo     # Expected: soc-backend-egress listed
 kubectl get pods -n gatekeeper-system           # Expected: controller running
@@ -177,7 +177,7 @@ kubectl get sealedsecret -n soc-agent-demo      # Expected: sealed secret listed
 
 ### Act 2a — Attack succeeds (run first)
 ```bash
-curl -X POST http://localhost:8000/api/threats/trigger \
+curl -X POST http://localhost:8080/api/threats/trigger \
   -H "Content-Type: application/json" \
   -d '{"adversarial_scenario": "note_poisoning_bypass", "adversarial_detector_enabled": false}'
 ```
@@ -187,7 +187,7 @@ curl -X POST http://localhost:8000/api/threats/trigger \
 
 ### Act 2b — Defense catches it (run second)
 ```bash
-curl -X POST http://localhost:8000/api/threats/trigger \
+curl -X POST http://localhost:8080/api/threats/trigger \
   -H "Content-Type: application/json" \
   -d '{"adversarial_scenario": "note_poisoning_catch", "adversarial_detector_enabled": true}'
 ```
@@ -379,7 +379,7 @@ Do not read from notes. These must be conversational.
 | Problem | Recovery |
 |---|---|
 | Backend won't start | `lsof -ti:8000 \| xargs kill -9` then restart. Show Grafana screenshots instead. |
-| Frontend blank | Open http://localhost:8000/api/threats directly. "Let me show you the API response — the dashboard is a visualization layer on top of this." |
+| Frontend blank | Open http://localhost:8080/api/threats directly. "Let me show you the API response — the dashboard is a visualization layer on top of this." |
 | Android emulator not showing | Skip it. "The emulator shows the endpoint compromise — let me jump straight to the detection output which is the interesting part." |
 | Adversarial demo not firing | Check backend logs. Fall back to THREAT_MODEL.md adversarial section. "Let me walk you through the detection logic — the code evidence is linked here." |
 | OPA rejection doesn't fire | Show the ConstraintTemplate YAML. "The policy spec is here — Kind's admission webhook has timing quirks on fresh clusters. What the webhook does is intercept every pod spec at the API server, evaluate it against these Rego policies, and return a structured rejection if any constraint fires. The enforcement model is the point — not the specific implementation." |
