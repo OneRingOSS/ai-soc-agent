@@ -1,8 +1,53 @@
 # SOC Agent System — Comprehensive Threat Model
 
-**Last Updated:** April 2026  
-**Version:** 3.0 (Supply Chain Hardening Complete - All 13 Tiers)  
+**Last Updated:** April 2026
+**Version:** 3.0 (Supply Chain Hardening Complete - All 13 Tiers)
 **Scope:** End-to-end system security (Development → CI/CD → Runtime → Operations)
+
+---
+
+## Table of Contents
+
+1. [Executive Summary](#-executive-summary)
+2. [System Architecture Overview](#-system-architecture-overview)
+3. [Trust Boundaries & STRIDE Analysis](#1-trust-boundaries--stride-analysis)
+   - [1.1 Development Boundary](#11-development-boundary)
+   - [1.2 CI/CD Boundary](#12-cicd-boundary)
+   - [1.3 Container Boundary](#13-container-boundary)
+   - [1.4 Kubernetes Runtime Boundary](#14-kubernetes-runtime-boundary)
+   - [1.5 Network Boundary](#15-network-boundary)
+   - [1.6 Agent Input Boundary](#16-agent-input-boundary)
+   - [1.7 Data Store Boundary](#17-data-store-boundary)
+   - [STRIDE Summary by Boundary](#stride-summary-by-boundary)
+4. [Threat Actors & Motivations](#2-threat-actors--motivations)
+5. [Attack Vectors & Mitigations](#3-attack-vectors--mitigations)
+   - [3.1 Supply Chain Layer](#31-supply-chain-layer)
+   - [3.2 Application Layer](#32-application-layer-agent-manipulation)
+   - [3.3 Infrastructure Layer](#33-infrastructure-layer)
+   - [3.4 Network Layer](#34-network-layer)
+   - [3.5 Secret Management](#35-secret-management)
+6. [Implemented Controls Matrix](#4-implemented-controls-matrix)
+   - [4.1 Development & CI/CD Security Controls](#41-development--cicd-security-controls)
+   - [4.2 Runtime Security Controls](#42-runtime-security-controls-kubernetes)
+   - [4.3 Application Security Controls](#43-application-security-controls)
+   - [4.4 Documentation & Process Controls](#44-documentation--process-controls)
+7. [CI/CD Pipeline Security Architecture](#5-cicd-pipeline-security-architecture)
+   - [5.1 GitHub Actions Workflow Security](#51-github-actions-workflow-security)
+   - [5.2 End-to-End Testing Strategy](#52-end-to-end-testing-strategy)
+8. [Risk Assessment Summary](#6-risk-assessment-summary)
+   - [6.1 Current Risk Posture](#61-current-risk-posture)
+   - [6.2 Residual Risks](#62-residual-risks-accepted)
+9. [Planned Mitigations (TODO)](#7-planned-mitigations-todo)
+   - [Priority 1 (Production Blockers)](#priority-1-production-blockers)
+   - [Priority 2 (High-Value Hardening)](#priority-2-high-value-hardening)
+   - [Priority 3 (Compliance & Supply Chain)](#priority-3-compliance--supply-chain)
+10. [Incident Response & Monitoring](#8-incident-response--monitoring)
+    - [8.1 Incident Log](#81-incident-log)
+    - [8.2 Security Monitoring & Alerting](#82-security-monitoring--alerting)
+11. [Compliance & Standards Alignment](#9-compliance--standards-alignment)
+12. [Conclusion & Recommendations](#10-conclusion--recommendations)
+    - [10.1 Current Security Posture](#101-current-security-posture)
+    - [10.2 Recommendations for Production Deployment](#102-recommendations-for-production-deployment)
 
 ---
 
@@ -15,9 +60,10 @@ This threat model provides a **holistic view** of the SOC Agent system's securit
 - **Application security:** Agent manipulation, prompt injection, adversarial detection
 - **Operational security:** Incident response, monitoring, threat intelligence
 
-**Risk Level:** 🟢 **LOW** (post-hardening)  
-**Controls Implemented:** 15 security controls across 5 layers  
-**CI Automation:** 8 security checks on every commit  
+**Risk Level:** 🟡 **MEDIUM** (post-hardening, pending P1/P2 TODOs)
+**Target Risk Level:** 🟢 **LOW** (after K8s Secrets, seccomp, egress proxy, and LLM output scanning)
+**Controls Implemented:** 15 security controls across 5 layers
+**CI Automation:** 8 security checks on every commit
 **Test Coverage:** 47 automated tests (100% pass rate)
 
 ---
@@ -183,7 +229,7 @@ Each trust boundary is analyzed using the **STRIDE framework** (Spoofing, Tamper
 
 | STRIDE Threat | Attack Scenario | Mitigation | Status |
 |---------------|-----------------|------------|--------|
-| **Spoofing** | Malicious analyst impersonates legitimate note author | (Gap - no note signing) | ❌ Gap |
+| **Spoofing** | Malicious analyst impersonates legitimate note author | SIEM audit logs provide author provenance; AdversarialDetector detects mass fabrication | ⚠️ Planned |
 | **Tampering** | Historical note poisoned by insider | AdversarialDetector infrastructure contradiction (Tier 3A) | ✅ Mitigated |
 | **Repudiation** | Analyst denies writing malicious note | SIEM audit logs (external system) | ✅ Baseline |
 | **Information Disclosure** | Prompt injection extracts system prompt | Input sanitizer (8 patterns, Tier 2B) | ✅ Mitigated |
@@ -222,7 +268,7 @@ Each trust boundary is analyzed using the **STRIDE framework** (Spoofing, Tamper
 | **Container** | 🟡 | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 MEDIUM |
 | **K8s Runtime** | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟢 LOW |
 | **Network** | 🟡 | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 MEDIUM |
-| **Agent Input** | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 MEDIUM |
+| **Agent Input** | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 MEDIUM |
 | **Data Store** | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | 🟢 LOW |
 
 **Legend:**
@@ -541,12 +587,20 @@ Scanned 1830 chunks (21.9 MB)
 **Likelihood:** Low (SHA-pinned actions reduce risk)
 
 **Mitigation (Tier 1B):** ✅ **PARTIAL**
+
+**Preventive Controls:**
 - SHA-pinned actions prevent easy malicious binary injection
 - npm --ignore-scripts prevents postinstall hook execution
 
-**Gap:** No seccomp profile blocking `/proc/pid/mem` reads (see TODO: INF-3-SECCOMP)
+**Detective Controls (Compensating):**
+- GitHub Actions audit logs capture all workflow executions with job details
+- `ACTIONS_STEP_DEBUG=true` provides verbose process-level visibility
+- GitHub Advanced Security (if enabled) surfaces network calls in job logs
+- Ephemeral runners (GitHub-hosted) provide containment boundary
 
-**Residual Risk:** 🟡 MEDIUM (reduced surface, full mitigation requires seccomp)
+**Gap (Preventive):** No seccomp profile blocking `/proc/pid/mem` reads (see TODO: INF-3-SECCOMP)
+
+**Residual Risk:** 🟡 MEDIUM (reduced attack surface + detective controls; full prevention requires seccomp)
 
 ---
 
@@ -778,7 +832,7 @@ jobs:
 | **Integration Tests** | pytest | Agent coordination, API endpoints | Every commit (separate job) |
 | **Contract Tests** | Helm template | K8s manifest validity | Pre-deployment |
 | **Security Tests** | input_sanitizer tests | Injection detection accuracy | Every commit (CI Step 8) |
-| **E2E Tests** | Manual | Full workflow (threat → analysis → verdict) | Pre-release |
+| **E2E Tests** | pytest (automated) | Full workflow (threat → analysis → verdict) | Every commit (CI) + Pre-release |
 
 **Security-Specific E2E Scenarios:**
 
@@ -812,7 +866,9 @@ jobs:
 | **Infrastructure** | 🟡 MEDIUM | 🟢 LOW | -70% risk |
 | **Network Security** | 🟠 MEDIUM-HIGH | 🟢 LOW | -75% risk |
 | **Secret Management** | 🔴 HIGH | 🟢 LOW | -90% risk |
-| **Overall System Risk** | 🔴 HIGH | 🟢 LOW | **-78% overall** |
+| **Overall System Risk** | 🔴 HIGH | 🟡 MEDIUM | **-60% current** (🟢 LOW after P1/P2 TODOs) |
+
+**Note:** Current 🟡 MEDIUM risk is acceptable for **demo/MVP deployment** with synthetic data. Production deployment with real customer security telemetry requires completing P1 (K8s Secrets encryption) and P2 (seccomp, egress proxy, LLM output scanning) mitigations to achieve 🟢 LOW risk target.
 
 ---
 
@@ -879,6 +935,19 @@ jobs:
 - **Effort:** Medium (2-3 days)
 - **Trigger:** Multi-tenant customer data handling
 
+**TODO: AG-1-NOTE-INTEGRITY — Historical Note Signing/Verification**
+- **Gap:** No cryptographic verification of historical note author identity (Spoofing threat in Agent Input boundary)
+- **Risk:** Malicious analyst forges notes attributed to trusted analysts
+- **Compensating Controls (Current):**
+  - SIEM audit logs provide author provenance (detective)
+  - AdversarialDetector detects behavioral patterns (18+ identical notes, service account authors, unrealistic timestamps)
+- **Mitigation (Preventive):**
+  - SIEM generates HMAC signature for each analyst note at write time (using shared secret)
+  - HistoricalAgent verifies HMAC before using note in prompt construction
+  - Invalid signatures logged and note excluded from context
+- **Effort:** Medium (2-3 days - requires SIEM integration)
+- **Trigger:** Production deployment with customer SIEM integration
+
 **TODO: RUNTIME-FALCO — Falco Runtime Threat Detection**
 - **Gap:** No syscall-level detection for anomalous pod behavior
 - **Risk:** Container escape, lateral movement undetected
@@ -890,6 +959,19 @@ jobs:
   - Route Falco alerts to `/api/egress-violations` for correlation
 - **Effort:** Medium (2-3 days)
 - **Trigger:** Production K8s deployment
+
+**TODO: NET-2-PAYLOAD — LLM Response Payload Inspection**
+- **Gap:** Can't detect covert data exfiltration via legitimate OpenAI API channel
+- **Risk:** Prompt injection bypassing input sanitizer instructs LLM to encode stolen data (env vars, secrets, threat intel) in API response
+- **Current Mitigation:** Input sanitizer blocks MOST injection vectors (Tier 2B)
+- **Planned Mitigation:**
+  - Regex + entropy classifier on agent response bodies before persistence to Redis
+  - Flag responses containing: env var patterns (`OPENAI_API_KEY=`), IP addresses, Base64-encoded blobs, structured JSON in unexpected format
+  - Log suspicious outputs for security review
+  - Quarantine responses with high entropy scores (>7.5 bits/char)
+- **Effort:** Medium (2-3 days including tuning false positive rate)
+- **Performance Impact:** ~5ms per response (regex + Shannon entropy calculation)
+- **Trigger:** Multi-tenant deployment handling customer security telemetry
 
 ---
 
@@ -914,15 +996,6 @@ jobs:
   - Publish provenance to Rekor transparency log
 - **Effort:** Medium (1-2 days)
 - **Trigger:** Post-MVP production hardening sprint
-
-**TODO: NET-2-PAYLOAD — OpenAI Response Payload Inspection**
-- **Gap:** Can't detect data exfiltration via legitimate API
-- **Risk:** LLM encodes stolen data in OpenAI request/response
-- **Mitigation:**
-  - Pattern matching on agent response bodies before persistence
-  - Flag env var patterns, IPs, Base64 in LLM outputs
-- **Effort:** Low (1 day)
-- **Trigger:** Can implement during Tier 2B hardening sprint
 
 ---
 
