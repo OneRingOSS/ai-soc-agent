@@ -34,11 +34,39 @@
 
 Complete before leaving home. Never troubleshoot live.
 
+### 🔄 **CRITICAL FIRST STEP: Reset Demo State**
+
+**⚠️ MUST RUN BEFORE EVERY DEMO SESSION:**
+
+```bash
+# Reset demo state (prevents historical note poisoning false positives)
+bash soc-agent-system/k8s/reset-demo-state.sh
+
+# Wait for completion (shows cleanup + pod restart)
+# Expected: ✅ Demo State Reset Complete!
+```
+
+**What this does:**
+- ✅ Clears all threat data from Redis
+- ✅ Clears historical incident data
+- ✅ Regenerates MockDataStore (fresh random data)
+- ✅ Restarts backend pods for clean state
+- ✅ Preserves VT cache (3 malware packages for enrichment)
+
+**Why this is critical:**
+- Prevents false "HISTORICAL NOTE FABRICATION" detections on clean threats
+- Ensures dashboard starts empty (no stale demo data)
+- Provides consistent baseline for all demo scenarios
+
+**⚠️ Forgetting this step will cause demo failures!**
+
+---
+
 ### System state
+- [ ] **Demo state reset** ← **DONE ABOVE - VERIFY!**
 - [ ] Backend running: `cd soc-agent-system/backend && uvicorn main:app --reload --host 0.0.0.0 --port 8000`
 - [ ] Frontend running: `cd soc-agent-system/frontend && npm run dev`
-- [ ] Dashboard loads clean at http://localhost:5173/
-- [ ] Adversarial demo reset to clean state (no pre-poisoned data)
+- [ ] Dashboard loads clean at http://localhost:5173/ (should show "No recent threats")
 - [ ] Kind cluster running: `kubectl cluster-info --context kind-soc-agent-cluster`
 - [ ] NetworkPolicy applied: `kubectl get networkpolicy -n soc-agent-demo`
 - [ ] Sealed Secrets controller running: `kubectl get pods -n kube-system | grep sealed-secrets`
