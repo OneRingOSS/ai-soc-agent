@@ -25,7 +25,7 @@ zizmor>=1.0.0
 # OpenTelemetry dependencies
 opentelemetry-api==1.22.0
 opentelemetry-sdk==1.22.0
-opentelemetry-instrumentation-fastapi==0.43b0
+opentelemetry-instrumentation-fastapi==0.61b0
 opentelemetry-exporter-otlp==1.22.0
 
 # Prometheus dependencies
