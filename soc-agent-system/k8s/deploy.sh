@@ -110,7 +110,19 @@ echo "✅ All backend pods ready"
 echo ""
 
 # -------------------------------------------------------
-# Step 7: Print access instructions
+# Step 7: Start cluster services (observability + verify config)
+# -------------------------------------------------------
+echo "Step 7: Starting cluster services..."
+if [ -f "$SCRIPT_DIR/startup-cluster-services.sh" ]; then
+  bash "$SCRIPT_DIR/startup-cluster-services.sh"
+else
+  echo "⚠️  startup-cluster-services.sh not found - skipping"
+  echo "   Manually run: bash soc-agent-system/k8s/startup-cluster-services.sh"
+fi
+echo ""
+
+# -------------------------------------------------------
+# Step 8: Print access instructions
 # -------------------------------------------------------
 echo "=== Deployment Complete ==="
 echo ""
@@ -121,7 +133,15 @@ echo ""
 echo "Backend Pods: $(kubectl get pods -l app=soc-backend --no-headers | wc -l)"
 echo "Redis Status: $(kubectl get pods -l app=redis --no-headers)"
 echo ""
+echo "Observability:"
+echo "  Grafana:    http://localhost:3000  (admin / prom-operator)"
+echo "  Prometheus: http://localhost:9090"
+echo "  Loki:       http://localhost:3100"
+echo "  Jaeger:     http://localhost:16686"
+echo ""
 echo "To view logs:  kubectl logs -l app=soc-backend --tail=50 -f"
 echo "To check HPA:  kubectl get hpa -w"
 echo "To teardown:   ./teardown.sh"
+echo ""
+echo "✨ All services ready! VirusTotal enrichment and observability enabled by default."
 
