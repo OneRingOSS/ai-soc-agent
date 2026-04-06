@@ -21,14 +21,42 @@ if [ ! -f "requirements.txt" ]; then
     exit 1
 fi
 
-# Check Python version
+# Check Python version - prefer 3.11 to match Docker image
 echo -e "${YELLOW}Step 1: Checking Python version...${NC}"
-if command -v python3 &>/dev/null; then
+
+# Try to find Python 3.11 (matches Docker image)
+if command -v python3.11 &>/dev/null; then
+    PYTHON_CMD="python3.11"
+    PYTHON_VERSION=$(python3.11 --version)
+    echo -e "${GREEN}✅ Found Python 3.11: $PYTHON_VERSION${NC}"
+    echo -e "${GREEN}   (Matches Docker image - recommended!)${NC}"
+# Fall back to Python 3.9 or 3.10 (compatible with dependencies)
+elif command -v python3.10 &>/dev/null; then
+    PYTHON_CMD="python3.10"
+    PYTHON_VERSION=$(python3.10 --version)
+    echo -e "${GREEN}✅ Found Python 3.10: $PYTHON_VERSION${NC}"
+elif command -v python3.9 &>/dev/null; then
+    PYTHON_CMD="python3.9"
+    PYTHON_VERSION=$(python3.9 --version)
+    echo -e "${GREEN}✅ Found Python 3.9: $PYTHON_VERSION${NC}"
+elif command -v python3 &>/dev/null; then
+    PYTHON_CMD="python3"
     PYTHON_VERSION=$(python3 --version)
+    # Check if it's 3.13+ (incompatible)
+    if [[ "$PYTHON_VERSION" =~ 3\.13 ]] || [[ "$PYTHON_VERSION" =~ 3\.14 ]]; then
+        echo -e "${RED}❌ Error: $PYTHON_VERSION is too new!${NC}"
+        echo -e "${YELLOW}pydantic-core 2.14.6 doesn't support Python 3.13+${NC}"
+        echo ""
+        echo -e "${YELLOW}Please install Python 3.11:${NC}"
+        echo -e "${YELLOW}  brew install python@3.11${NC}"
+        echo -e "${YELLOW}Then run this script again.${NC}"
+        exit 1
+    fi
     echo -e "${GREEN}✅ Found: $PYTHON_VERSION${NC}"
 else
     echo -e "${RED}❌ Error: python3 not found${NC}"
-    echo -e "${YELLOW}Please install Python 3.8 or higher${NC}"
+    echo -e "${YELLOW}Please install Python 3.9, 3.10, or 3.11${NC}"
+    echo -e "${YELLOW}Recommended: brew install python@3.11${NC}"
     exit 1
 fi
 echo ""
@@ -47,8 +75,8 @@ if [ -d "venv" ]; then
         echo -e "${YELLOW}Using existing venv${NC}"
     fi
 else
-    python3 -m venv venv
-    echo -e "${GREEN}✅ Virtual environment created${NC}"
+    $PYTHON_CMD -m venv venv
+    echo -e "${GREEN}✅ Virtual environment created with $PYTHON_CMD${NC}"
 fi
 echo ""
 
