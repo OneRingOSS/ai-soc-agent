@@ -37,32 +37,30 @@
 #
 # ============================================================================
 
-# Python virtual environment
-VENV := backend/venv
-PYTHON := $(VENV)/bin/python
-PIP := $(VENV)/bin/pip
-RUFF := $(VENV)/bin/ruff
-PYTEST := $(VENV)/bin/pytest
+# Python virtual environment detection
+# In CI: Use system binaries (no venv)
+# Locally: Use venv binaries
+VENV_DIR := backend/venv
+VENV_PYTHON := $(VENV_DIR)/bin/python
+VENV_RUFF := $(VENV_DIR)/bin/ruff
+VENV_PYTEST := $(VENV_DIR)/bin/pytest
 
-# Check if venv exists, provide helpful message if not
-.PHONY: check-venv
-check-venv:
-	@if [ ! -d "$(VENV)" ]; then \
-		echo "❌ Virtual environment not found at $(VENV)!"; \
-		echo ""; \
-		echo "Please set up the development environment first:"; \
-		echo "  cd backend && bash setup-dev-env.sh"; \
-		echo ""; \
-		exit 1; \
-	fi
-	@if [ ! -f "$(RUFF)" ]; then \
-		echo "❌ Development tools not installed in venv!"; \
-		echo ""; \
-		echo "Your venv exists but is incomplete. Please recreate:"; \
-		echo "  cd backend && rm -rf venv && bash setup-dev-env.sh"; \
-		echo ""; \
-		exit 1; \
-	fi
+# Detect if venv exists and use it, otherwise fall back to system
+ifeq ($(shell test -d $(VENV_DIR) && echo yes),yes)
+    # Local development with venv
+    PYTHON := $(VENV_PYTHON)
+    RUFF := $(VENV_RUFF)
+    PYTEST := $(VENV_PYTEST)
+    PIP := $(VENV_DIR)/bin/pip
+    USE_VENV := true
+else
+    # CI environment or no venv - use system binaries
+    PYTHON := python3
+    RUFF := ruff
+    PYTEST := pytest
+    PIP := pip
+    USE_VENV := false
+endif
 
 .PHONY: help lint test test-integration scan-secrets scan-dependencies scan-workflows scan-image validate-lockfile quality-gate build up down clean demo all
 
@@ -93,12 +91,12 @@ help:
 # Quality Gates
 # ============================================================================
 
-lint: check-venv
+lint:
 	@echo "🔍 Running ruff linter..."
 	@cd backend && $(RUFF) check src/ --output-format=concise
 	@echo "✅ Linting passed"
 
-test: check-venv
+test:
 	@echo "🧪 Running unit tests with coverage..."
 	@cd backend && $(PYTEST) tests/test_agents.py tests/test_coordinator.py tests/test_threat_generator.py \
 		-v --cov=src --cov-report=term-missing --cov-fail-under=55 -m "not integration"
@@ -114,9 +112,9 @@ scan-secrets:
 		(echo "⚠️  Secrets found! Check output above." && exit 1)
 	@echo "✅ No secrets found"
 
-scan-dependencies: check-venv ## Scan Python dependencies for known CVEs
+scan-dependencies: ## Scan Python dependencies for known CVEs
 	@echo "🔍 Scanning Python dependencies with pip-audit..."
-	@cd backend && $(VENV)/bin/pip-audit -r requirements.txt --format columns \
+	@cd backend && pip-audit -r requirements.txt --format columns \
 		--ignore-vuln GHSA-gc5v-m9x4-r6x2 \
 		--ignore-vuln GHSA-w853-jp5j-5j7f \
 		--ignore-vuln GHSA-qmgc-5h2g-mvrw \
@@ -124,9 +122,9 @@ scan-dependencies: check-venv ## Scan Python dependencies for known CVEs
 		--ignore-vuln GHSA-2c2j-9gv5-cj73 || true
 	@echo "✅ Dependency scan complete (5 known CVEs ignored - see .pip-audit-ignore.yaml)"
 
-scan-workflows: check-venv ## Scan GitHub Actions workflows for security issues
+scan-workflows: ## Scan GitHub Actions workflows for security issues
 	@echo "🔍 Scanning GitHub workflows with zizmor..."
-	@cd backend && $(VENV)/bin/zizmor ../../.github/workflows/ || true
+	@cd backend && zizmor ../../.github/workflows/ || true
 	@echo "✅ Workflow scan complete (findings above are tracked for Tier 1B)"
 
 scan-image:
