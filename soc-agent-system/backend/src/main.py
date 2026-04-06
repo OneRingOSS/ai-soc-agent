@@ -529,7 +529,7 @@ async def reset_demo_state():
 
     # Step 1: Reset in-memory MockDataStore
     # This is critical - MockDataStore is a singleton that persists between requests
-    from mock_data import MockDataStore, mock_data_store
+    from mock_data import mock_data_store
 
     # Recreate the singleton's internal state
     mock_data_store.historical_incidents = mock_data_store._generate_historical_incidents()

@@ -6,11 +6,12 @@ This module provides two datasets:
 
 Used for testing Historical Note Poisoning adversarial detection.
 """
+import sys
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-import sys
+
 sys.path.insert(0, 'src')
-from models import HistoricalIncident, ThreatType, ThreatSeverity
+from models import HistoricalIncident, ThreatType, ThreatSeverity  # noqa: E402
 
 
 # ============================================================================
