@@ -23,8 +23,12 @@
 #     make help          - Show this help message
 #
 # Requirements:
-#   - ruff (Python linter): pip install ruff
-#   - pytest (Testing): pip install pytest pytest-cov
+#   Setup virtual environment first:
+#     cd backend && bash setup-dev-env.sh
+#
+#   Then run make targets normally. The Makefile will use the venv automatically.
+#
+#   External tools needed:
 #   - trufflehog (Secret scanning): brew install trufflehog
 #   - trivy (Image scanning): brew install trivy
 #   - docker & docker-compose
@@ -32,6 +36,25 @@
 #   - curl
 #
 # ============================================================================
+
+# Python virtual environment
+VENV := backend/venv
+PYTHON := $(VENV)/bin/python
+PIP := $(VENV)/bin/pip
+RUFF := $(VENV)/bin/ruff
+PYTEST := $(VENV)/bin/pytest
+
+# Check if venv exists, provide helpful message if not
+.PHONY: check-venv
+check-venv:
+	@if [ ! -d "$(VENV)" ]; then \
+		echo "❌ Virtual environment not found!"; \
+		echo ""; \
+		echo "Please set up the development environment first:"; \
+		echo "  cd backend && bash setup-dev-env.sh"; \
+		echo ""; \
+		exit 1; \
+	fi
 
 .PHONY: help lint test test-integration scan-secrets scan-dependencies scan-workflows scan-image validate-lockfile quality-gate build up down clean demo all
 
@@ -62,14 +85,14 @@ help:
 # Quality Gates
 # ============================================================================
 
-lint:
+lint: check-venv
 	@echo "🔍 Running ruff linter..."
-	@cd backend && ruff check src/ --output-format=concise
+	@cd backend && $(RUFF) check src/ --output-format=concise
 	@echo "✅ Linting passed"
 
-test:
+test: check-venv
 	@echo "🧪 Running unit tests with coverage..."
-	@cd backend && pytest tests/test_agents.py tests/test_coordinator.py tests/test_threat_generator.py \
+	@cd backend && $(PYTEST) tests/test_agents.py tests/test_coordinator.py tests/test_threat_generator.py \
 		-v --cov=src --cov-report=term-missing --cov-fail-under=55 -m "not integration"
 	@echo "✅ Unit tests passed with 55%+ coverage"
 
@@ -83,9 +106,9 @@ scan-secrets:
 		(echo "⚠️  Secrets found! Check output above." && exit 1)
 	@echo "✅ No secrets found"
 
-scan-dependencies: ## Scan Python dependencies for known CVEs
+scan-dependencies: check-venv ## Scan Python dependencies for known CVEs
 	@echo "🔍 Scanning Python dependencies with pip-audit..."
-	@cd backend && source venv/bin/activate && pip-audit -r requirements.txt --format columns \
+	@cd backend && $(VENV)/bin/pip-audit -r requirements.txt --format columns \
 		--ignore-vuln GHSA-gc5v-m9x4-r6x2 \
 		--ignore-vuln GHSA-w853-jp5j-5j7f \
 		--ignore-vuln GHSA-qmgc-5h2g-mvrw \
@@ -93,9 +116,9 @@ scan-dependencies: ## Scan Python dependencies for known CVEs
 		--ignore-vuln GHSA-2c2j-9gv5-cj73 || true
 	@echo "✅ Dependency scan complete (5 known CVEs ignored - see .pip-audit-ignore.yaml)"
 
-scan-workflows: ## Scan GitHub Actions workflows for security issues
+scan-workflows: check-venv ## Scan GitHub Actions workflows for security issues
 	@echo "🔍 Scanning GitHub workflows with zizmor..."
-	@cd backend && source venv/bin/activate && zizmor ../../.github/workflows/ || true
+	@cd backend && $(VENV)/bin/zizmor ../../.github/workflows/ || true
 	@echo "✅ Workflow scan complete (findings above are tracked for Tier 1B)"
 
 scan-image:
