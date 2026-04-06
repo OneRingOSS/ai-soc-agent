@@ -24,9 +24,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd soc-agent-system/backend
-          pip install --upgrade pip
+          pip install --upgrade pip==24.0  # Pin pip version for supply chain security
           pip install -r requirements.txt
-          pip install ruff pytest pytest-cov
+          # Pin versions for supply chain security (immutable dependencies)
+          pip install ruff==0.1.14 pytest==7.4.4 pytest-cov==4.1.0
 
       - name: Install frontend dependencies
         run: |
@@ -104,10 +105,13 @@ jobs:
       
       - name: Install Trivy
         run: |
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update
-          sudo apt-get install trivy
+          # Install specific version for supply chain security (immutable)
+          TRIVY_VERSION="0.58.1"
+          wget -qO trivy.deb "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+          # Verify checksum for additional security
+          echo "8b82c5da0c43233b180146f2ecbf69c17d45dc806b1d8306e1d8fc3a854c7b0b  trivy.deb" | sha256sum -c -
+          sudo dpkg -i trivy.deb
+          trivy --version
       
       - name: Scan Docker images
         run: |
@@ -170,9 +174,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd soc-agent-system/backend
-          pip install --upgrade pip
+          pip install --upgrade pip==24.0  # Pin pip version for supply chain security
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio redis
+          # Pin versions for supply chain security (immutable dependencies)
+          pip install pytest==7.4.4 pytest-asyncio==0.23.3 redis==5.0.1
       
       - name: Run integration tests
         env:
