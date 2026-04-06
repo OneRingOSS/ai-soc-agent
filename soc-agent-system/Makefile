@@ -48,10 +48,18 @@ PYTEST := $(VENV)/bin/pytest
 .PHONY: check-venv
 check-venv:
 	@if [ ! -d "$(VENV)" ]; then \
-		echo "❌ Virtual environment not found!"; \
+		echo "❌ Virtual environment not found at $(VENV)!"; \
 		echo ""; \
 		echo "Please set up the development environment first:"; \
 		echo "  cd backend && bash setup-dev-env.sh"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(RUFF)" ]; then \
+		echo "❌ Development tools not installed in venv!"; \
+		echo ""; \
+		echo "Your venv exists but is incomplete. Please recreate:"; \
+		echo "  cd backend && rm -rf venv && bash setup-dev-env.sh"; \
 		echo ""; \
 		exit 1; \
 	fi
