@@ -156,3 +156,6 @@ soc-agent-system/loadtests/*.csv
 soc-agent-system/k8s/demo/k8s-demo-*.html
 soc-agent-system/k8s/demo/k8s-demo-*.csv
 
+
+# SBOM files (generated, should be in CI artifacts)
+sbom-*.json
