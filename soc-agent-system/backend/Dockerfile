@@ -13,21 +13,22 @@ WORKDIR /app
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install globally (not --user) so it's accessible to all users
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Stage 2: Runtime
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy installed packages from builder stage
-COPY --from=builder /root/.local /root/.local
+# Copy installed packages from builder stage to system-wide location
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application source code
 COPY src/ .
 
-# Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
+# uvicorn and other scripts are now in /usr/local/bin (already in PATH)
 
 # Expose FastAPI port
 EXPOSE 8000

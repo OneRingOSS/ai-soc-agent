@@ -6,6 +6,33 @@
 
 ---
 
+## 🔄 CRITICAL: Reset Demo State First
+
+**ALWAYS run this before ANY demo to prevent false positives:**
+
+```bash
+# Reset demo state (clears historical data + regenerates MockDataStore)
+bash soc-agent-system/k8s/reset-demo-state.sh
+
+# Expected output:
+# ✅ Redis cleanup complete
+# ✅ Backend pods restarting
+# ✅ Demo State Reset Complete!
+```
+
+**Why this is critical:**
+- Prevents historical note poisoning false positives
+- Clears stale threat data from dashboard
+- Ensures VT enrichment cache is preserved
+- Gives clean baseline for all demos
+
+**⚠️ Forgetting this step will cause:**
+- ❌ Clean threats flagged as "HISTORICAL NOTE FABRICATION"
+- ❌ Dashboard cluttered with old demo threats
+- ❌ Inconsistent demo behavior
+
+---
+
 ## Quick Verification Script
 
 ```bash

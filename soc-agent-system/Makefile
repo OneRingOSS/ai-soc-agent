@@ -23,8 +23,12 @@
 #     make help          - Show this help message
 #
 # Requirements:
-#   - ruff (Python linter): pip install ruff
-#   - pytest (Testing): pip install pytest pytest-cov
+#   Setup virtual environment first:
+#     cd backend && bash setup-dev-env.sh
+#
+#   Then run make targets normally. The Makefile will use the venv automatically.
+#
+#   External tools needed:
 #   - trufflehog (Secret scanning): brew install trufflehog
 #   - trivy (Image scanning): brew install trivy
 #   - docker & docker-compose
@@ -32,6 +36,31 @@
 #   - curl
 #
 # ============================================================================
+
+# Python virtual environment detection
+# In CI: Use system binaries (no venv)
+# Locally: Use venv binaries
+VENV_DIR := backend/venv
+VENV_PYTHON := $(VENV_DIR)/bin/python
+VENV_RUFF := $(VENV_DIR)/bin/ruff
+VENV_PYTEST := $(VENV_DIR)/bin/pytest
+
+# Detect if venv exists and use it, otherwise fall back to system
+ifeq ($(shell test -d $(VENV_DIR) && echo yes),yes)
+    # Local development with venv
+    PYTHON := $(VENV_PYTHON)
+    RUFF := $(VENV_RUFF)
+    PYTEST := $(VENV_PYTEST)
+    PIP := $(VENV_DIR)/bin/pip
+    USE_VENV := true
+else
+    # CI environment or no venv - use system binaries
+    PYTHON := python3
+    RUFF := ruff
+    PYTEST := pytest
+    PIP := pip
+    USE_VENV := false
+endif
 
 .PHONY: help lint test test-integration scan-secrets scan-dependencies scan-workflows scan-image validate-lockfile quality-gate build up down clean demo all
 
@@ -64,12 +93,12 @@ help:
 
 lint:
 	@echo "🔍 Running ruff linter..."
-	@cd backend && ruff check src/ --output-format=concise
+	@cd backend && $(RUFF) check src/
 	@echo "✅ Linting passed"
 
 test:
 	@echo "🧪 Running unit tests with coverage..."
-	@cd backend && pytest tests/test_agents.py tests/test_coordinator.py tests/test_threat_generator.py \
+	@cd backend && $(PYTEST) tests/test_agents.py tests/test_coordinator.py tests/test_threat_generator.py \
 		-v --cov=src --cov-report=term-missing --cov-fail-under=55 -m "not integration"
 	@echo "✅ Unit tests passed with 55%+ coverage"
 
@@ -85,7 +114,7 @@ scan-secrets:
 
 scan-dependencies: ## Scan Python dependencies for known CVEs
 	@echo "🔍 Scanning Python dependencies with pip-audit..."
-	@cd backend && source venv/bin/activate && pip-audit -r requirements.txt --format columns \
+	@cd backend && pip-audit -r requirements.txt --format columns \
 		--ignore-vuln GHSA-gc5v-m9x4-r6x2 \
 		--ignore-vuln GHSA-w853-jp5j-5j7f \
 		--ignore-vuln GHSA-qmgc-5h2g-mvrw \
@@ -95,7 +124,7 @@ scan-dependencies: ## Scan Python dependencies for known CVEs
 
 scan-workflows: ## Scan GitHub Actions workflows for security issues
 	@echo "🔍 Scanning GitHub workflows with zizmor..."
-	@cd backend && source venv/bin/activate && zizmor ../../.github/workflows/ || true
+	@cd backend && zizmor ../../.github/workflows/ || true
 	@echo "✅ Workflow scan complete (findings above are tracked for Tier 1B)"
 
 scan-image:

@@ -24,9 +24,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd soc-agent-system/backend
-          pip install --upgrade pip
+          pip install --upgrade pip==24.0  # Pin pip version for supply chain security
           pip install -r requirements.txt
-          pip install ruff pytest pytest-cov
+          # Pin versions for supply chain security (immutable dependencies)
+          pip install ruff==0.1.14 pytest==7.4.4 pytest-cov==4.1.0
 
       - name: Install frontend dependencies
         run: |
@@ -101,13 +102,43 @@ jobs:
         run: |
           cd soc-agent-system
           make build
-      
+
+      - name: Install Syft for SBOM generation
+        run: |
+          # Install specific version for supply chain security
+          SYFT_VERSION="1.0.1"
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin v${SYFT_VERSION}
+          syft version
+
+      - name: Generate SBOM (CycloneDX JSON)
+        run: |
+          cd soc-agent-system
+          echo "Generating SBOM for backend..."
+          syft packages dir:backend -o cyclonedx-json > sbom-backend.json
+          echo "Generating SBOM for frontend..."
+          syft packages dir:frontend -o cyclonedx-json > sbom-frontend.json
+          echo "Generating SBOM for Docker images..."
+          syft packages docker:soc-backend:latest -o cyclonedx-json > sbom-backend-image.json
+          syft packages docker:soc-frontend:latest -o cyclonedx-json > sbom-frontend-image.json
+          echo "SBOM generation complete"
+          ls -lh sbom-*.json
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@84480863f228bb9747b473957fcc9e309aa96097 # v4.4.2
+        with:
+          name: sbom-cyclonedx
+          path: soc-agent-system/sbom-*.json
+          retention-days: 90
+
       - name: Install Trivy
         run: |
-          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-          echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee -a /etc/apt/sources.list.d/trivy.list
-          sudo apt-get update
-          sudo apt-get install trivy
+          # Install specific version for supply chain security (immutable)
+          TRIVY_VERSION="0.69.3"
+          wget -qO trivy.deb "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
+          # Verify SHA256 checksum (from official trivy_0.69.3_checksums.txt)
+          echo "a484057aafde31089cf2558ca0f79a4bc835125a5ee6834183a5bcf0735af358  trivy.deb" | sha256sum -c -
+          sudo dpkg -i trivy.deb
+          trivy --version
       
       - name: Scan Docker images
         run: |
@@ -170,9 +201,10 @@ jobs:
       - name: Install dependencies
         run: |
           cd soc-agent-system/backend
-          pip install --upgrade pip
+          pip install --upgrade pip==24.0  # Pin pip version for supply chain security
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio redis
+          # Pin versions for supply chain security (immutable dependencies)
+          pip install pytest==7.4.4 pytest-asyncio==0.23.3 redis==5.0.1
       
       - name: Run integration tests
         env:

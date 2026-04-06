@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad-pod
+  namespace: soc-agent-demo
+  # Missing required labels: app, version
+spec:
+  automountServiceAccountToken: true    # violates constraint 1
+  # Missing securityContext with seccomp profile  # violates constraint 2
+  containers:
+  - name: bad-container
+    image: nginx:latest
+    # Missing resource limits                      # violates constraint 3

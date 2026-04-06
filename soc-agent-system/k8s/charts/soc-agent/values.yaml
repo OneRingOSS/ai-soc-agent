@@ -50,8 +50,10 @@ backend:
     OTEL_EXPORTER_OTLP_ENDPOINT: "http://jaeger.observability.svc.cluster.local:4317"
     OTEL_SERVICE_NAME: "soc-agent-system"
     LOG_LEVEL: "INFO"
-    # Mock mode - disable OpenAI API calls for development
-    FORCE_MOCK_MODE: "true"
+    # Mock mode - DISABLED for live OpenAI API calls (requires OPENAI_API_KEY secret)
+    FORCE_MOCK_MODE: "false"
+    # Demo mode - use pre-seeded VT data instead of calling VT API
+    DEMO_MODE: "true"
     # Disable auto threat generation to prevent resource exhaustion
     ENABLE_AUTO_THREAT_GENERATION: "false"
     THREAT_GENERATION_INTERVAL: "30"
@@ -106,7 +108,7 @@ ingress:
 # -- Observability stack configuration
 observability:
   # -- Enable observability stack (Prometheus, Grafana, Jaeger, Loki)
-  enabled: false  # Set to true to deploy observability stack
+  enabled: true  # ServiceMonitor enabled for Prometheus scraping
 
   # -- Namespace for observability components
   namespace: observability
