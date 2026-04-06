@@ -133,10 +133,10 @@ jobs:
       - name: Install Trivy
         run: |
           # Install specific version for supply chain security (immutable)
-          TRIVY_VERSION="0.58.1"
+          TRIVY_VERSION="0.69.3"
           wget -qO trivy.deb "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.deb"
-          # Verify checksum for additional security
-          echo "8b82c5da0c43233b180146f2ecbf69c17d45dc806b1d8306e1d8fc3a854c7b0b  trivy.deb" | sha256sum -c -
+          # Verify SHA256 checksum (from official trivy_0.69.3_checksums.txt)
+          echo "a484057aafde31089cf2558ca0f79a4bc835125a5ee6834183a5bcf0735af358  trivy.deb" | sha256sum -c -
           sudo dpkg -i trivy.deb
           trivy --version
       
