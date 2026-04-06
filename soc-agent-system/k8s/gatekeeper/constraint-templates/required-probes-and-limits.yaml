@@ -1,0 +1,48 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srequiredprobes
+  annotations:
+    description: Requires seccomp profile RuntimeDefault and resource limits on all containers
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRequiredProbes
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srequiredprobes
+
+        violation[{"msg": msg}] {
+          # Check seccomp profile
+          not input.review.object.spec.securityContext.seccompProfile.type == "RuntimeDefault"
+          msg := sprintf("Pod %v/%v violates security policy: seccomp profile must be RuntimeDefault", [input.review.object.metadata.namespace, input.review.object.metadata.name])
+        }
+
+        violation[{"msg": msg}] {
+          # Check if seccompProfile is missing entirely
+          not input.review.object.spec.securityContext.seccompProfile
+          msg := sprintf("Pod %v/%v violates security policy: seccomp profile must be explicitly set to RuntimeDefault", [input.review.object.metadata.namespace, input.review.object.metadata.name])
+        }
+
+        violation[{"msg": msg}] {
+          # Check resource limits on containers
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits
+          msg := sprintf("Pod %v/%v violates security policy: container %v must have resource limits defined", [input.review.object.metadata.namespace, input.review.object.metadata.name, container.name])
+        }
+
+        violation[{"msg": msg}] {
+          # Check resource limits include memory
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.memory
+          msg := sprintf("Pod %v/%v violates security policy: container %v must have memory limits defined", [input.review.object.metadata.namespace, input.review.object.metadata.name, container.name])
+        }
+
+        violation[{"msg": msg}] {
+          # Check resource limits include CPU
+          container := input.review.object.spec.containers[_]
+          not container.resources.limits.cpu
+          msg := sprintf("Pod %v/%v violates security policy: container %v must have CPU limits defined", [input.review.object.metadata.namespace, input.review.object.metadata.name, container.name])
+        }
