@@ -93,7 +93,7 @@ help:
 
 lint:
 	@echo "🔍 Running ruff linter..."
-	@cd backend && $(RUFF) check src/ --output-format=concise
+	@cd backend && $(RUFF) check src/
 	@echo "✅ Linting passed"
 
 test:
