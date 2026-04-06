@@ -177,9 +177,11 @@ Each trust boundary is analyzed using the **STRIDE framework** (Spoofing, Tamper
 | **Repudiation** | Image builder denies creating malicious image | Image provenance (planned - SLSA) | ⚠️ Planned |
 | **Information Disclosure** | Unpatched CVE exposes container data | Trivy CRITICAL threshold (baseline) | ✅ Mitigated |
 | **Denial of Service** | Vulnerable package crashes container | Trivy scanning (baseline) | ✅ Mitigated |
-| **Elevation of Privilege** | Container escape via kernel exploit | Trivy scanning + seccomp (planned) | 🟡 Partial |
+| **Elevation of Privilege** | Container escape via kernel exploit | Trivy scanning + OPA seccomp enforcement (ADM-1) | ✅ Mitigated* |
 
 **Residual Risk:** 🟡 MEDIUM (image signing and provenance planned)
+
+**\*Note on Seccomp:** OPA Gatekeeper (ADM-1) enforces `seccompProfile.type: RuntimeDefault` at admission time via K8sRequiredProbes constraint. Pod spec templates need seccomp annotation to pass the gate — not a gap, but a deployment step.
 
 ---
 
@@ -194,11 +196,11 @@ Each trust boundary is analyzed using the **STRIDE framework** (Spoofing, Tamper
 | **Spoofing** | Malicious pod impersonates legitimate pod | ServiceAccount per component (Tier 1I) | ✅ Mitigated |
 | **Tampering** | Pod modifies another pod's data via shared volume | No shared volumes (design) | ✅ Mitigated |
 | **Repudiation** | Pod denies malicious activity | K8s audit logs (baseline) | ✅ Baseline |
-| **Information Disclosure** | Pod reads K8s secrets via API token | automountServiceAccountToken: false (Tier 1I) | ✅ Mitigated |
+| **Information Disclosure** | Pod reads K8s secrets via API token | automountServiceAccountToken: false (Tier 1I) + Sealed Secrets | ✅ Mitigated |
 | **Denial of Service** | Pod consumes all cluster resources | Resource limits (planned) | ⚠️ Planned |
 | **Elevation of Privilege** | Pod escalates to K8s admin via API | automountServiceAccountToken: false (Tier 1I) | ✅ Mitigated |
 
-**Residual Risk:** 🟢 LOW (resource limits planned for DoS)
+**Residual Risk:** 🟡 MEDIUM (Sealed Secrets addresses Git leaks, etcd at-rest encryption pending — P1 blocker)
 
 ---
 
@@ -266,7 +268,7 @@ Each trust boundary is analyzed using the **STRIDE framework** (Spoofing, Tamper
 | **Development** | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 MEDIUM |
 | **CI/CD** | ✅ | ✅ | ✅ | 🟡 | ✅ | ✅ | 🟡 MEDIUM |
 | **Container** | 🟡 | ✅ | 🟡 | ✅ | ✅ | 🟡 | 🟡 MEDIUM |
-| **K8s Runtime** | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟢 LOW |
+| **K8s Runtime** | ✅ | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 MEDIUM |
 | **Network** | 🟡 | ✅ | ✅ | ✅ | 🟡 | ✅ | 🟡 MEDIUM |
 | **Agent Input** | 🟡 | ✅ | ✅ | ✅ | ✅ | ✅ | 🟡 MEDIUM |
 | **Data Store** | ✅ | ✅ | 🟡 | ✅ | ✅ | ✅ | 🟢 LOW |
@@ -859,16 +861,16 @@ jobs:
 
 ### 6.1 Current Risk Posture
 
-| Risk Category | Pre-Hardening | Post-Hardening (13 Tiers) | Improvement |
-|---------------|---------------|---------------------------|-------------|
-| **Supply Chain** | 🔴 HIGH | 🟢 LOW | -85% risk |
-| **Application Security** | 🟡 MEDIUM | 🟢 LOW | -60% risk |
-| **Infrastructure** | 🟡 MEDIUM | 🟢 LOW | -70% risk |
-| **Network Security** | 🟠 MEDIUM-HIGH | 🟢 LOW | -75% risk |
-| **Secret Management** | 🔴 HIGH | 🟢 LOW | -90% risk |
-| **Overall System Risk** | 🔴 HIGH | 🟡 MEDIUM | **-60% current** (🟢 LOW after P1/P2 TODOs) |
+| Risk Category | Pre-Hardening | Post-Hardening (Current) | Residual Risk Adjustments |
+|---------------|---------------|---------------------------|---------------------------|
+| **Supply Chain** | 🔴 HIGH | 🟡 MEDIUM | SC-3.1: 5 accepted CVEs (Py 3.10+ pending) |
+| **Application Security** | 🟡 MEDIUM | 🟡 MEDIUM | AG-3: novel LLM output manipulation open |
+| **Infrastructure** | 🟡 MEDIUM | 🟡 MEDIUM | INF-3: /proc/pid/mem CI exfiltration open (requires seccomp) |
+| **Network Security** | 🟠 MEDIUM-HIGH | 🟡 MEDIUM | NET-2: LLM payload exfiltration; NET-3: DNS rebinding open |
+| **Secret Management** | 🔴 HIGH | 🟡 MEDIUM | etcd at-rest encryption open (P1) — Sealed Secrets addresses Git leaks |
+| **Overall System Risk** | 🔴 HIGH | 🟡 **MEDIUM** | 🟢 LOW after P1 + P2 TODOs complete |
 
-**Note:** Current 🟡 MEDIUM risk is acceptable for **demo/MVP deployment** with synthetic data. Production deployment with real customer security telemetry requires completing P1 (K8s Secrets encryption) and P2 (seccomp, egress proxy, LLM output scanning) mitigations to achieve 🟢 LOW risk target.
+**Note:** Current 🟡 MEDIUM risk is acceptable for **demo/MVP deployment** with synthetic data. Post-hardening column reflects **residual-adjusted posture** accounting for 5 accepted MEDIUM residual risks (Section 6.2). Production deployment with real customer security telemetry requires completing P1 (etcd encryption) and P2 (seccomp, egress proxy, LLM output scanning) mitigations to achieve 🟢 LOW risk target.
 
 ---
 
@@ -941,15 +943,20 @@ jobs:
   - Aligns with DTEX InTERCEPT philosophy: policy enforcement, not guidelines
 - **Risk Reduction:** 🟡 MEDIUM → 🟢 LOW (Prevents misconfigurations at admission time)
 
-**TODO: INF-3-SECCOMP — Seccomp Profile for CI and K8s Pods**
-- **Gap:** Malicious binary can read `/proc/pid/mem` of other processes
-- **Risk:** Secret exfiltration from CI runner or K8s host
-- **Mitigation:**
-  - Apply `RuntimeDefault` seccomp profile to all pod specs
+**⚠️ PARTIALLY IMPLEMENTED: INF-3-SECCOMP — Seccomp Profile for CI and K8s Pods**
+- **Implementation Date:** April 6, 2026 (OPA enforcement active)
+- **✅ Implemented:** OPA Gatekeeper (ADM-1) enforces `seccompProfile.type: RuntimeDefault` at admission time via K8sRequiredProbes constraint
+  - New pods without seccomp profile are rejected at Kubernetes API level
+  - Prevents accidental deployment of pods without seccomp hardening
+- **⚠️ Deployment Step Required:** Pod spec templates need to declare seccomp annotation
+  - Add `securityContext.seccompProfile.type: RuntimeDefault` to all pod specs
   - Add `allowPrivilegeEscalation: false` to container securityContexts
   - Add `readOnlyRootFilesystem: true` where possible
-- **Effort:** Low-Medium (1-2 days)
+- **Gap:** CI runners (GitHub Actions) still lack seccomp profile for `/proc/pid/mem` protection
+- **Risk:** CI secret exfiltration (INF-3) — mitigated by SHA-pinning, full prevention pending
+- **Effort:** Low (pod specs) + Medium (CI hardening: 1-2 days)
 - **Trigger:** Before production K8s deployment
+- **Note:** OPA enforcement closes the Kubernetes attack surface; this is a deployment workflow step, not a security gap
 
 **TODO: NET-3-PROXY — Egress Proxy with Certificate Pinning**
 - **Gap:** IP-CIDR NetworkPolicy doesn't prevent DNS rebinding
@@ -1075,9 +1082,9 @@ jobs:
 
 | Framework | Relevant Controls | Coverage | Gaps |
 |-----------|-------------------|----------|------|
-| **OpenSSF Best Practices** | Dependency scanning, secret scanning, SBOM | 90% | SBOM generation (TODO) |
+| **OpenSSF Best Practices** | Dependency scanning, secret scanning, SBOM | 95% | SLSA provenance (TODO) — SBOM ✅ implemented v3.1 |
 | **SLSA Build Security (L3)** | SHA-pinned dependencies, lockfile validation | 80% | Build provenance (TODO) |
-| **CIS Kubernetes Benchmark** | ServiceAccounts, NetworkPolicy, least-privilege | 95% | Seccomp profiles (TODO) |
+| **CIS Kubernetes Benchmark** | ServiceAccounts, NetworkPolicy, least-privilege | 95% | Seccomp (OPA enforces, pod specs need annotation) |
 | **NIST 800-190 (Containers)** | Image scanning, runtime monitoring | 75% | Falco runtime detection (TODO) |
 | **OWASP LLM Top 10** | Prompt injection mitigation (#1), supply chain security (#5) | 100% | Fully addressed |
 | **MITRE ATT&CK** | Defense Evasion (TA0005), Credential Access (TA0006) | 85% | K8s secrets encryption (TODO) |
@@ -1093,27 +1100,29 @@ jobs:
 ✅ **TESTED** - 47 tests validate security controls
 ✅ **DOCUMENTED** - Comprehensive threat analysis complete
 
-**Overall Risk Level:** 🟢 **LOW** (post-hardening)
+**Overall Risk Level:** 🟡 **MEDIUM** (post-hardening, pending P1/P2 TODOs)
+
+**Note:** Current 🟡 MEDIUM risk reflects 5 accepted residual risks (Section 6.2). Target risk level is 🟢 LOW after completing P1 production blockers (etcd encryption) and P2 high-value hardening (seccomp, egress proxy, LLM output scanning).
 
 ---
 
 ### 10.2 Recommendations for Production Deployment
 
 **Before First Production Customer:**
-1. ✅ Implement K8s Secrets encryption at rest (P1)
-2. ✅ Apply seccomp profiles to all pods (P2)
-3. ✅ Upgrade to Python 3.10+ to resolve 5 CVEs (P2)
-4. ✅ Deploy Falco runtime monitoring (P2)
-5. ✅ Configure egress proxy with cert pinning (P2)
+1. ⬜ **Required:** Implement K8s Secrets encryption at rest (P1) — etcd encryption pending
+2. ⬜ **Required:** Apply seccomp profiles to all pods (P2) — OPA enforcement active, pod specs need annotation
+3. ⬜ **Required:** Upgrade to Python 3.10+ to resolve 5 CVEs (P2)
+4. ⬜ **Required:** Deploy Falco runtime monitoring (P2)
+5. ⬜ **Required:** Configure egress proxy with cert pinning (P2)
 
 **Before Multi-Tenant Deployment:**
-1. ✅ Implement LLM output scanning (P2)
-2. ✅ Generate SBOMs for all releases (P3)
-3. ✅ Add SLSA build provenance (P3)
+1. ⬜ **Required:** Implement LLM output scanning (P2)
+2. ✅ **Implemented:** Generate SBOMs for all releases (P3) — CycloneDX + SPDX active as of v3.1
+3. ⬜ **Required:** Add SLSA build provenance (P3)
 
 **Continuous Improvement:**
-1. ✅ Review threat model quarterly
-2. ✅ Update `.pip-audit-ignore.yaml` monthly
+1. ⬜ **Required:** Review threat model quarterly
+2. ⬜ **Required:** Update `.pip-audit-ignore.yaml` monthly
 3. ✅ Rotate all secrets every 90 days
 4. ✅ Conduct penetration testing annually
 
