@@ -32,15 +32,27 @@ fi
 echo -e "${GREEN}✅ Cluster is running${NC}"
 echo ""
 
-# Step 2: Deploy/upgrade Helm charts
-echo -e "${YELLOW}Step 2: Deploying Helm charts...${NC}"
-cd soc-agent-system/k8s
+# Step 2: Deploy observability stack if not present
+echo -e "${YELLOW}Step 2: Checking observability stack...${NC}"
+if ! kubectl get namespace observability &>/dev/null; then
+    echo "  Observability namespace not found, deploying..."
+    cd "$REPO_ROOT/soc-agent-system/k8s"
+    bash deploy-observability.sh
+    echo -e "${GREEN}✅ Observability stack deployed${NC}"
+else
+    echo -e "${GREEN}✅ Observability namespace exists${NC}"
+fi
+echo ""
+
+# Step 3: Deploy/upgrade Helm charts
+echo -e "${YELLOW}Step 3: Deploying SOC Agent Helm charts...${NC}"
+cd "$REPO_ROOT/soc-agent-system/k8s"
 ./deploy.sh
 echo -e "${GREEN}✅ Helm deployment complete${NC}"
 echo ""
 
-# Step 3: Configure OpenAI API key
-echo -e "${YELLOW}Step 3: Configuring OpenAI API key...${NC}"
+# Step 4: Configure OpenAI API key
+echo -e "${YELLOW}Step 4: Configuring OpenAI API key...${NC}"
 
 # Check if .env file exists
 if [ ! -f "$REPO_ROOT/soc-agent-system/backend/.env" ]; then
@@ -73,22 +85,22 @@ kubectl set env deployment/soc-agent-backend \
 echo -e "${GREEN}✅ OpenAI API key configured${NC}"
 echo ""
 
-# Step 4: Wait for backend to be ready
-echo -e "${YELLOW}Step 4: Waiting for backend pods to be ready...${NC}"
+# Step 5: Wait for backend to be ready
+echo -e "${YELLOW}Step 5: Waiting for backend pods to be ready...${NC}"
 kubectl rollout status deployment/soc-agent-backend -n soc-agent-demo --timeout=120s
 echo -e "${GREEN}✅ Backend pods ready${NC}"
 echo ""
 
-# Step 5: Start observability port-forwards
-echo -e "${YELLOW}Step 5: Starting observability port-forwards...${NC}"
+# Step 6: Start observability port-forwards
+echo -e "${YELLOW}Step 6: Starting observability port-forwards...${NC}"
 cd "$REPO_ROOT/soc-agent-system/k8s"
 ./startup-cluster-services.sh &>/dev/null &
 sleep 5
 echo -e "${GREEN}✅ Observability services started${NC}"
 echo ""
 
-# Step 6: Verify configuration
-echo -e "${YELLOW}Step 6: Verifying configuration...${NC}"
+# Step 7: Verify configuration
+echo -e "${YELLOW}Step 7: Verifying configuration...${NC}"
 
 # Check live mode
 echo -ne "  Checking live mode... "
@@ -128,8 +140,8 @@ fi
 
 echo ""
 
-# Step 7: Run ACT2 test
-echo -e "${YELLOW}Step 7: Testing ACT2 adversarial detection...${NC}"
+# Step 8: Run ACT2 test
+echo -e "${YELLOW}Step 8: Testing ACT2 adversarial detection...${NC}"
 cd "$REPO_ROOT"
 
 if [ -f "test-act2.sh" ]; then
