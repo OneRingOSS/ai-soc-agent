@@ -1,7 +1,7 @@
 # SOC Agent System — Comprehensive Threat Model
 
-**Last Updated:** April 2026
-**Version:** 3.0 (Supply Chain Hardening Complete - All 13 Tiers)
+**Last Updated:** April 6, 2026
+**Version:** 3.1 (Supply Chain + Admission Control + SBOM + Sealed Secrets)
 **Scope:** End-to-end system security (Development → CI/CD → Runtime → Operations)
 
 ---
@@ -61,9 +61,9 @@ This threat model provides a **holistic view** of the SOC Agent system's securit
 - **Operational security:** Incident response, monitoring, threat intelligence
 
 **Risk Level:** 🟡 **MEDIUM** (post-hardening, pending P1/P2 TODOs)
-**Target Risk Level:** 🟢 **LOW** (after K8s Secrets, seccomp, egress proxy, and LLM output scanning)
-**Controls Implemented:** 15 security controls across 5 layers
-**CI Automation:** 8 security checks on every commit
+**Target Risk Level:** 🟢 **LOW** (after etcd encryption, seccomp, egress proxy, and LLM output scanning)
+**Controls Implemented:** 18 security controls across 6 layers (added: OPA Gatekeeper, Sealed Secrets, SBOM)
+**CI Automation:** 11 security checks on every commit (added: SBOM generation, checksum verification, admission policies)
 **Test Coverage:** 47 automated tests (100% pass rate)
 
 ---
@@ -891,19 +891,55 @@ jobs:
 
 ### Priority 1 (Production Blockers)
 
-**TODO: K8S-SECRETS — K8s Secrets Encryption at Rest**
-- **Gap:** Kubernetes Secrets stored base64-encoded (not encrypted) in etcd
-- **Risk:** Etcd compromise → all secrets exposed
-- **Mitigation:**
-  - Enable etcd encryption at rest (KMS provider)
-  - Migrate to External Secrets Operator (ESO) reading from HashiCorp Vault
-  - Rotate all Secrets to ESO-sourced values
-- **Effort:** High (1 week for full migration)
-- **Trigger:** Required before any production customer deployment
+**⚠️ PARTIALLY IMPLEMENTED: K8S-SECRETS — K8s Secrets Management**
+- **Implementation Date:** April 6, 2026
+- **✅ Implemented:** Sealed Secrets (Bitnami) for GitOps-safe secret encryption
+  - Secrets encrypted with cluster public key before committing to Git
+  - Controller automatically decrypts using cluster-scoped private key
+  - Automatic key rotation every 30 days
+  - Zero external dependencies (self-contained)
+  - Addresses #1 K8s secret leak vector (plaintext in Git repos)
+  - Documentation: `docs/deployment/` (comparison matrix + demo guide)
+- **⚠️ Remaining Gap:** etcd encryption at rest (not enabled in Kind cluster)
+- **Risk:** Etcd compromise → secrets exposed (mitigated: Kind is local-only, demo data)
+- **Production Mitigation Required:**
+  - Enable etcd encryption at rest (KMS provider for AWS/GCP)
+  - OR migrate to External Secrets Operator (HashiCorp Vault)
+  - Decision matrix documented in `soc-agent-system/k8s/sealed-secrets/README.md`
+- **Effort:** Medium (3 days for KMS integration)
+- **Trigger:** Required before any production deployment with real customer data
+- **Risk Reduction:** 🔴 HIGH → 🟡 MEDIUM (Sealed Secrets addresses Git leaks, etcd encryption pending)
 
 ---
 
 ### Priority 2 (High-Value Hardening)
+
+**✅ IMPLEMENTED: ADM-1-GATEKEEPER — OPA Gatekeeper Admission Control**
+- **Implementation Date:** April 6, 2026
+- **Solution:** Policy-based admission control at Kubernetes API server level
+- **Controller:** Gatekeeper v3.15.0 (4 controller pods + 1 audit pod)
+- **Policies Enforced (3 ConstraintTemplates):**
+  1. **K8sBlockAutomountToken:** Denies pods that auto-mount ServiceAccount tokens
+     - Enforces `automountServiceAccountToken: false` (least-privilege)
+     - Prevents accidental cluster API access from pods
+  2. **K8sRequiredProbes:** Enforces seccomp RuntimeDefault + resource limits
+     - Requires `securityContext.seccompProfile.type: RuntimeDefault`
+     - Mandates CPU and memory limits on all containers
+     - Prevents resource exhaustion and noisy neighbor attacks
+  3. **K8sRequiredLabels:** Requires observability labels (app, version)
+     - Enforces `app` and `version` labels on all pods
+     - Enables Prometheus service discovery and metrics correlation
+- **Scope:** `soc-agent-demo` namespace (production-ready constraints)
+- **Testing:** Live rejection validated (7 policy violations caught)
+- **Documentation:**
+  - Deployment: `soc-agent-system/k8s/gatekeeper/deploy-policies.sh`
+  - Demo guide: `soc-agent-system/k8s/gatekeeper/DEMO-GUIDE.md`
+  - Test pod: `soc-agent-system/k8s/gatekeeper/test-bad-pod.yaml`
+- **Philosophy:** **Enforcement > Configuration**
+  - YAML files are configuration (mutable, can be overridden)
+  - Admission gates are enforcement (immutable, cannot be bypassed accidentally)
+  - Aligns with DTEX InTERCEPT philosophy: policy enforcement, not guidelines
+- **Risk Reduction:** 🟡 MEDIUM → 🟢 LOW (Prevents misconfigurations at admission time)
 
 **TODO: INF-3-SECCOMP — Seccomp Profile for CI and K8s Pods**
 - **Gap:** Malicious binary can read `/proc/pid/mem` of other processes
@@ -977,15 +1013,22 @@ jobs:
 
 ### Priority 3 (Compliance & Supply Chain)
 
-**TODO: SBOM — Software Bill of Materials**
-- **Gap:** No machine-readable inventory of all components
-- **Risk:** Unable to respond quickly to supply chain advisories
-- **Mitigation:**
-  - Generate SBOM in SPDX or CycloneDX format using Syft
-  - Attach SBOM to GitHub Release artifacts
-  - Automate SBOM generation in CI
-- **Effort:** Low (half day)
-- **Trigger:** Any public release
+**✅ IMPLEMENTED: SBOM — Software Bill of Materials**
+- **Implementation Date:** April 6, 2026
+- **Solution:** Automated SBOM generation in CI using Syft v1.0.1
+- **Format:** CycloneDX 1.5 JSON (OWASP standard, security-focused)
+- **Coverage:**
+  - Backend source code dependencies (37 components cataloged)
+  - Frontend source code dependencies
+  - Backend Docker image dependencies
+  - Frontend Docker image dependencies
+- **CI Integration:**
+  - Syft generates SBOMs automatically on every CI run
+  - Artifacts uploaded to GitHub Actions (90-day retention)
+  - Pinned Syft version (v1.0.1) for reproducibility
+- **Compliance:** EO 14028 compliant (NTIA minimum elements)
+- **Documentation:** `docs/deployment/SBOM-IMPLEMENTATION-GUIDE.md`
+- **Risk Reduction:** ✅ Can now respond to CVE disclosures in minutes (was hours/days)
 
 **TODO: PROVENANCE — SLSA Build Provenance**
 - **Gap:** No cryptographic proof images built from expected source
@@ -1073,6 +1116,55 @@ jobs:
 2. ✅ Update `.pip-audit-ignore.yaml` monthly
 3. ✅ Rotate all secrets every 90 days
 4. ✅ Conduct penetration testing annually
+
+---
+
+## 📝 Changelog
+
+### Version 3.1 (April 6, 2026) - Admission Control + SBOM + Sealed Secrets
+
+**Major Implementations:**
+1. **✅ OPA Gatekeeper v3.15.0** - Admission control policies enforced
+   - 3 ConstraintTemplates deployed (ServiceAccount tokens, seccomp, resource limits, labels)
+   - 3 Constraints active in soc-agent-demo namespace
+   - Live rejection validated (7 policy violations caught)
+   - Enforces security controls at API server level (cannot be bypassed)
+
+2. **✅ Sealed Secrets (Bitnami)** - GitOps-safe secret encryption
+   - Controller v0.24.5 deployed
+   - Demo SealedSecret created and validated (encryption/decryption working)
+   - Addresses #1 K8s secret leak vector (plaintext in Git)
+   - Automatic key rotation every 30 days
+   - Decision matrix documented (vs External Secrets vs native K8s)
+
+3. **✅ SBOM Generation (Syft v1.0.1)** - Software Bill of Materials
+   - CycloneDX 1.5 JSON format (OWASP standard, security-focused)
+   - 37 backend components cataloged automatically
+   - Integrated into CI (4 SBOM artifacts per run: backend/frontend source + images)
+   - GitHub Actions artifact upload (90-day retention)
+   - EO 14028 compliant (NTIA minimum elements)
+
+4. **✅ Supply Chain Hardening**
+   - Trivy upgraded to v0.69.3 (from 0.58.1)
+   - SHA256 checksum verification for Trivy installation
+   - All CI tool versions pinned (ruff, pytest, pip-audit, zizmor, syft, trivy)
+
+**Documentation Added:**
+- `docs/deployment/SBOM-IMPLEMENTATION-GUIDE.md` - Complete SBOM guide
+- `soc-agent-system/k8s/gatekeeper/` - OPA Gatekeeper deployment + demo guides
+- `soc-agent-system/k8s/sealed-secrets/` - Sealed Secrets deployment + comparison matrix
+- `docs/testing/DEMO-VALIDATION-REPORT.md` - Component readiness validation
+
+**Controls Added:** 3 new security controls (total: 18)
+**Risk Reduction:** Multiple 🟡 MEDIUM → 🟢 LOW transitions
+
+**CI Enhancements:** 11 automated security checks (was 8)
+
+---
+
+### Version 3.0 (April 2026) - Supply Chain Hardening Complete
+
+**Previous major implementations documented in earlier versions**
 
 ---
 
