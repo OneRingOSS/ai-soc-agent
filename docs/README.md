@@ -26,6 +26,7 @@ Guides for deploying and operating the system:
 - **CLUSTER-RESTART-RECOVERY.md** - Recovery procedures after cluster restart
 - **AUTOMATIC-STARTUP-SUMMARY.md** - Automated startup configuration
 - **DEMO-RESET-GUIDE.md** - Reset demo state between runs
+- **SBOM-IMPLEMENTATION-GUIDE.md** - Software Bill of Materials (SBOM) generation and compliance
 
 ---
 
@@ -70,6 +71,7 @@ Reference materials and planning documents:
 - **[Observability Setup](deployment/OBSERVABILITY-DEPLOYMENT-GUIDE.md)** - Deploy monitoring stack
 - **[Cluster Recovery](deployment/CLUSTER-RESTART-RECOVERY.md)** - Recover after restart
 - **[Observability Troubleshooting](deployment/OBSERVABILITY-FIX-GUIDE.md)** - Fix common issues
+- **[SBOM Guide](deployment/SBOM-IMPLEMENTATION-GUIDE.md)** - Software Bill of Materials generation
 
 ### For Security
 - **[STRIDE Threat Model](STRIDE-THREAT-MODEL-v6.md)** - Complete security analysis
