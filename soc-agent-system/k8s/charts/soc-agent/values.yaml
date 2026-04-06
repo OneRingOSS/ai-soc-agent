@@ -108,7 +108,7 @@ ingress:
 # -- Observability stack configuration
 observability:
   # -- Enable observability stack (Prometheus, Grafana, Jaeger, Loki)
-  enabled: false  # Set to true to deploy observability stack
+  enabled: true  # ServiceMonitor enabled for Prometheus scraping
 
   # -- Namespace for observability components
   namespace: observability

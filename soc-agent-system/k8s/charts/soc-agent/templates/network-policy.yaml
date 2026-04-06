@@ -14,6 +14,26 @@ spec:
       app.kubernetes.io/component: backend
   policyTypes:
     - Egress
+    - Ingress
+  ingress:
+    # Allow Prometheus scraping from observability namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+      ports:
+        - protocol: TCP
+          port: 8000
+
+    # Allow frontend to access backend API
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ include "soc-agent.name" . }}
+              app.kubernetes.io/component: frontend
+      ports:
+        - protocol: TCP
+          port: 8000
   egress:
     # Allow DNS resolution (required for all external API calls)
     - to:
